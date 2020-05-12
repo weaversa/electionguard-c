@@ -1,0 +1,149 @@
+include "llvm.saw";
+
+let {{
+  from_mpz : {a, b} (fin a, fin b, a*64 >= b) => [a][64] -> [b]
+  from_mpz List = drop (join List)
+  
+  to_mpz bv = groupBy`{64} (0#bv)
+}};
+
+mpz_bc <- llvm_load_module "obj/mpz.bc";
+
+//%struct.__mpz_struct = type { i32, i32, i64* }
+let mpz_t (rw : Term) (n : Int) (name : String) = do {
+  //Here we assume the ElectionGuard-C code will never reference any
+  //of these arguments, so we co-opt them for other purposes.
+
+  //Here we let the first argument represent the number of bits.
+  nBits <- variable uint32_t (str_concat name ".nBits") (STALE {{ `n : [32] }});
+
+  //Here we let the second argument represent the number of words.
+  nWords <- variable uint32_t (str_concat name ".nWords") (STALE {{ `(n /^ 64) : [32] }});
+
+  //Here we let the third argument be a pointer to an allocated list n/^64 64-bit words.
+  value <- alloc rw (llvm_array (eval_int {{ `(n /^ 64) : [32] }}) uint64_t) (str_concat name ".value") FRESH;
+
+  v <- struct [nBits.s, nWords.s, value.p];
+
+  vp <- pointer rw (struct_t "__mpz_struct");
+  points_to vp v.s;
+
+  let (nBitst,  nWordst,  valuet) =
+      (nBits.t, nWords.t, value.t);
+  let vt = {{ {nBits=nBitst, nWords=nWordst, value=valuet} }};
+
+  return {p=vp, s=v.s, t=vt};
+};
+
+let mpz_t' (n : Int) (name : String) (vp : SetupValue) = do {
+  //Here we assume the ElectionGuard-C code will never reference any
+  //of these arguments, so we co-opt them for other purposes.
+
+  //Here we let the first argument represent the number of bits.
+  nBits <- variable uint32_t (str_concat name ".nBits") (STALE {{ `n : [32] }});
+
+  //Here we let the second argument represent the number of words.
+  nWords <- variable uint32_t (str_concat name ".nWords") (STALE {{ `(n /^ 64) : [32] }});
+
+  //Here we let the third argument be a pointer to an allocated list n/^64 64-bit words.
+  value <- alloc WRITE (llvm_array (eval_int {{ `(n /^ 64) : [32] }}) uint64_t) (str_concat name ".value") FRESH;
+
+  v <- struct [nBits.s, nWords.s, value.p];
+
+  let (nBitst,  nWordst,  valuet) =
+      (nBits.t, nWords.t, value.t);
+  let vt = {{ {nBits=nBitst, nWords=nWordst, value=valuet} }};
+
+  points_to vp v.s;
+
+  return {p=vp, s=v.s, t=vt};
+};
+
+
+//void mpz_init (mpz_t x)
+let mpz_init_spec (nBits : Int) = do {
+  vp <- pointer WRITE (struct_t "__mpz_struct");
+
+  execute [vp];
+
+  x' <- mpz_t' nBits "x'" vp;
+
+  let xt' = x'.t;
+  postcond {{ from_mpz`{b=nBits} xt'.value == (0 : [nBits]) }};
+};
+
+mpz_init_ov <- crucible_llvm_verify mpz_bc "__gmpz_init" [] true (mpz_init_spec 256) z3;
+
+//void mpz_import (mpz_t rop, size_t count, int order, size_t size, int endian, size_t nails, const void *op)
+let mpz_import_spec (count : Int) (size : Int) = do {
+  ropp <- pointer WRITE (struct_t "__mpz_struct");
+  op <- alloc CONST (llvm_array (eval_int {{ `(count * size) : [32] }}) uint8_t) "op" FRESH;
+
+  execute [ropp,
+           from_cryptol {{ `count : [32] }},
+           from_cryptol {{ 1 : [32] }},
+           from_cryptol {{ `size : [32] }},
+           from_cryptol {{ 0 : [32] }},
+           from_cryptol {{ 0 : [32] }},
+           op.p];
+
+  rop' <- mpz_t' (eval_int {{ `(count * size * 8) : [32] }}) "rop'" ropp;
+
+  let (ropt', opt) = (rop'.t, op.t);
+  //This is weird...consider more later!!!
+  postcond {{ from_mpz`{b=count*size*8} ropt'.value == (join (join [ reverse b | b <- groupBy`{8} opt])) }};
+};
+
+let init_global name = do {
+  global_alloc name;
+  crucible_points_to (crucible_global name)
+                     (crucible_global_initializer name);
+};
+
+let glo_import_spec = do {
+  init_global "glo";
+  init_global "q_array";
+
+  execute [];
+
+  let glop = global "glo";
+
+  glo' <- mpz_t' 256 "glo'" (element glop 0);
+
+  let glot = glo'.t;
+  postcond {{ from_mpz`{b=256} glot.value == (join [1, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFF43]) }};
+};
+
+let mpz_init_ov n = crucible_llvm_unsafe_assume_spec mpz_bc "__gmpz_init" (mpz_init_spec n);
+
+mpz_init_256_ov <- mpz_init_ov 256;
+
+let mpz_import_ov n m = crucible_llvm_unsafe_assume_spec mpz_bc "__gmpz_import" (mpz_import_spec n m);
+
+mpz_import_4_8_ov <- mpz_import_ov 4 8;
+
+print "First";
+glo_import_ov <- crucible_llvm_verify mpz_bc "glo_import" [] true glo_import_spec z3;
+
+print "Second";
+glo_import_ov <- crucible_llvm_verify mpz_bc "glo_import" [mpz_init_256_ov] true glo_import_spec z3;
+
+print "Third";
+glo_import_ov <- crucible_llvm_verify mpz_bc "glo_import" [mpz_import_4_8_ov] true glo_import_spec z3;
+
+print "Fourth";
+glo_import_ov <- crucible_llvm_verify mpz_bc "glo_import" [mpz_init_256_ov, mpz_import_4_8_ov] true glo_import_spec z3;
+
+
+//void mpz_set_ui (mpz_t rop, unsigned long int op)
+let mpz_set_ui_spec (nBits : Int) = do {
+  ropp <- pointer WRITE (struct_t "__mpz_struct");
+  op <- variable uint64_t "op" FRESH;
+
+  execute [ropp, op.s];
+
+  rop' <- mpz_t' nBits "rop'" ropp;
+
+  let (ropt', opt) = (rop'.t, op.t);
+  postcond {{ from_mpz`{b=nBits} ropt'.value == (0#opt : [nBits]) }};
+};

@@ -1,0 +1,118 @@
+include "mpz.saw";
+
+let {{
+  p_array = [
+    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
+    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
+    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
+    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
+    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
+    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
+    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
+    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
+    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
+    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
+    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
+    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
+    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
+    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
+    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
+    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
+    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
+    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
+    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
+    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFba,
+    0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFE0175E30B1B0E79,
+    0x1DB502994F24DFB1] : [64][64]
+
+  g_array = [
+    0x9B61C275E06F3E38, 0x372F9A9ADE0CDC4C, 0x82F4CE5337B3EF0E,
+    0xD28BEDBC01342EB8, 0x9977C8116D741270, 0xD45B0EBE12D96C5A,
+    0xEE997FEFDEA18569, 0x018AFE1284E702BB, 0x9B8C78E03E697F37,
+    0x8D25BCBCB94FEFD1, 0x2B7F97047F634232, 0x68881C3B96B389E1,
+    0x34CB3162CB73ED80, 0x52F7946C7E72907F, 0xD8B96862D443B5C2,
+    0x6F7B0E3FDC9F035C, 0xBF0F5AAB670B7901, 0x1A8BCDEBCF421CC9,
+    0xCBBE12C788E50328, 0x041EB59D81079497, 0xB667B96049DA04C7,
+    0x9D60F527B1C02F7E, 0xCBA66849179CB5CF, 0xBE7C990CD888B69C,
+    0x44171E4F54C21A8C, 0xFE9D821F195F7553, 0xB73A705707263EAE,
+    0xA3B7AFA7DED79ACF, 0x5A64F3BFB939B815, 0xC52085F40714F4C6,
+    0x460B0B0C3598E317, 0x46A06C2A3457676C, 0xB345C8A390EBB942,
+    0x8CEECEFA6FCB1C27, 0xA9E527A6C55B8D6B, 0x2B1868D6EC719E18,
+    0x9A799605C540F864, 0x1F135D5DC7FB62D5, 0x8E0DE0B6AE3AB90E,
+    0x91FB996505D7D928, 0x3DA833FF0CB6CC8C, 0xA7BAFA0E90BB1ADB,
+    0x81545A801F0016DC, 0x7088A4DF2CFB7D6D, 0xD876A2A5807BDAA4,
+    0x000DAFA2DFB6FBB0, 0xED9D775589156DDB, 0xFC24FF2203FFF9C5,
+    0xCF7C85C68F66DE94, 0xC98331F50FEF59CF, 0x8E7CE9D95FA008F7,
+    0xC1672D269C163751, 0x012826C4C8F5B5F4, 0xC11EDB62550F3CF9,
+    0x3D86F3CC6E22B0E7, 0x69AC659157F40383, 0xB5DF9DB9F8414F6C,
+    0xB5FA7D17BDDD3BC9, 0x0DC7BDC39BAF3BE6, 0x02A99E2A37CE3A5C,
+    0x098A8C1EFD3CD28A, 0x6B79306CA2C20C55, 0x174218A3935F697E,
+    0x813628D2D861BE54] : [64][64]
+
+  q_array = [0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
+             0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFF43] : [4][64]
+}};
+
+bignum_bc <- llvm_load_module "obj/bignum.bc";
+
+let bignum_verify = llvm_verify bignum_bc;
+
+//void Crypto_parameters_new()
+let Crypto_parameters_new_spec = do {
+  global_alloc "g_array";
+  global_alloc "p_array";
+  global_alloc "q_array";
+
+  global_alloc "p";
+  global_alloc "q";
+  global_alloc "generator";
+  global_alloc "bignum_one";
+
+  execute [];
+
+  let qg = global "q";
+  q <- mpz_t' 256 "q" (element qg 0);
+
+  let qt = q.t;
+  //postcond {{ from_mpz`{b=256} qt.value == join q_array }};
+  postcond {{ qt.value@0 != 0 }};
+
+/*
+  let pg = global "p";
+  p <- mpz_t' 4096 "p" (element pg 0);
+
+  let pt = p.t;
+  postcond {{ from_mpz`{b=4096} pt.value == join p_array }};
+*/
+
+/*
+  q <- global_s "q";
+  equal q (from_cryptol {{ join q_array }});
+
+  generator <- global_s "generator";
+  equal generator (from_cryptol {{ join g_array }});
+
+  bignum_one <- global_s "bignum_one";
+*/
+
+};
+
+let mpz_init_ov n = crucible_llvm_unsafe_assume_spec bignum_bc "__gmpz_init" (mpz_init_spec n);
+
+mpz_init_4096_ov <- mpz_init_ov 4096;
+mpz_init_256_ov <- mpz_init_ov 256;
+
+let mpz_import_ov n m = crucible_llvm_unsafe_assume_spec bignum_bc "__gmpz_import" (mpz_import_spec n m);
+
+mpz_import_64_8_ov <- mpz_import_ov 64 8;
+mpz_import_4_8_ov <- mpz_import_ov 4 8;
+
+let mpz_set_ui_ov n = crucible_llvm_unsafe_assume_spec bignum_bc "__gmpz_set_ui" (mpz_set_ui_spec n);
+
+mpz_set_ui_384_ov <- mpz_set_ui_ov 384;
+
+
+Crypto_parameters_new_ov <- bignum_verify
+  "Crypto_parameters_new"
+  [mpz_init_4096_ov, mpz_init_256_ov, mpz_import_64_8_ov, mpz_import_4_8_ov, mpz_set_ui_384_ov]
+  Crypto_parameters_new_spec;
