@@ -74,8 +74,8 @@ let Crypto_parameters_new_spec = do {
   q <- mpz_t' 256 "q" (element qg 0);
 
   let qt = q.t;
-  //postcond {{ from_mpz`{b=256} qt.value == join q_array }};
-  postcond {{ qt.value@0 != 0 }};
+  postcond {{ from_mpz`{b=256} qt.value == join q_array }};
+  //postcond {{ qt.value@0 != 0 }};
 
 /*
   let pg = global "p";
