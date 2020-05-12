@@ -59,14 +59,14 @@ let bignum_verify = llvm_verify bignum_bc;
 
 //void Crypto_parameters_new()
 let Crypto_parameters_new_spec = do {
-  global_alloc "g_array";
-  global_alloc "p_array";
-  global_alloc "q_array";
+  global_init "g_array";
+  global_init "p_array";
+  global_init "q_array";
 
-  global_alloc "p";
-  global_alloc "q";
-  global_alloc "generator";
-  global_alloc "bignum_one";
+  global_init "p";
+  global_init "q";
+  global_init "generator";
+  global_init "bignum_one";
 
   execute [];
 

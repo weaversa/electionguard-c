@@ -94,15 +94,15 @@ let mpz_import_spec (count : Int) (size : Int) = do {
   postcond {{ from_mpz`{b=count*size*8} ropt'.value == (join (join [ reverse b | b <- groupBy`{8} opt])) }};
 };
 
-let init_global name = do {
+let global_init name = do {
   global_alloc name;
   crucible_points_to (crucible_global name)
                      (crucible_global_initializer name);
 };
 
 let glo_import_spec = do {
-  init_global "glo";
-  init_global "q_array";
+  global_init "glo";
+  global_init "q_array";
 
   execute [];
 
