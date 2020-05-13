@@ -20,7 +20,11 @@ let precond = crucible_precond;
 let from_cryptol = crucible_term;
 
 let global = crucible_global;
-let global_alloc = crucible_alloc_global;
+let global_init name = do {
+  crucible_alloc_global name;
+  crucible_points_to (crucible_global name)
+                     (crucible_global_initializer name);
+};
 let element = crucible_elem;
 let equal = crucible_equal;
 let execute = crucible_execute_func;

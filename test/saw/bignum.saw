@@ -70,31 +70,22 @@ let Crypto_parameters_new_spec = do {
 
   execute [];
 
-  let qg = global "q";
-  q <- mpz_t' 256 "q" (element qg 0);
+  generator <- mpz_t' WRITE 4096 "generator" (element (global "generator") 0);
+  let generatort = generator.t;
+  postcond {{ from_mpz`{b=4096} generatort.value == join g_array }};
 
-  let qt = q.t;
-  postcond {{ from_mpz`{b=256} qt.value == join q_array }};
-  //postcond {{ qt.value@0 != 0 }};
+  //!!! 384?
+  bignum_one <- mpz_t' WRITE 384 "bignum_one" (element (global "bignum_one") 0);
+  let bignum_onet = bignum_one.t;
+  postcond {{ from_mpz`{b=384} bignum_onet.value == 1 }};
 
-/*
-  let pg = global "p";
-  p <- mpz_t' 4096 "p" (element pg 0);
-
+  p <- mpz_t' WRITE 4096 "p" (element (global "p") 0);
   let pt = p.t;
   postcond {{ from_mpz`{b=4096} pt.value == join p_array }};
-*/
 
-/*
-  q <- global_s "q";
-  equal q (from_cryptol {{ join q_array }});
-
-  generator <- global_s "generator";
-  equal generator (from_cryptol {{ join g_array }});
-
-  bignum_one <- global_s "bignum_one";
-*/
-
+  q <- mpz_t' WRITE 256 "q" (element (global "q") 0);
+  let qt = q.t;
+  postcond {{ from_mpz`{b=256} qt.value == join q_array }};
 };
 
 let mpz_init_ov n = crucible_llvm_unsafe_assume_spec bignum_bc "__gmpz_init" (mpz_init_spec n);
@@ -116,3 +107,5 @@ Crypto_parameters_new_ov <- bignum_verify
   "Crypto_parameters_new"
   [mpz_init_4096_ov, mpz_init_256_ov, mpz_import_64_8_ov, mpz_import_4_8_ov, mpz_set_ui_384_ov]
   Crypto_parameters_new_spec;
+
+
