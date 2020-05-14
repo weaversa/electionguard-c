@@ -24,7 +24,7 @@ let {{
 }};
 
 //%struct.__mpz_struct = type { i32, i32, i64* }
-let mpz_t (rw : Term) (n : Int) (name : String) = do {
+let mpz_t_setup (rw : Term) (n : Int) (name : String) = do {
   //Here we assume the ElectionGuard-C code will never reference any
   //of these arguments, so we co-opt them for other purposes.
 
@@ -39,38 +39,24 @@ let mpz_t (rw : Term) (n : Int) (name : String) = do {
 
   v <- struct [nBits.s, nWords.s, value.p];
 
-  vp <- pointer rw (struct_t "__mpz_struct");
-  points_to vp v.s;
-
   let (nBitst,  nWordst,  valuet) =
       (nBits.t, nWords.t, value.t);
   let vt = {{ {nBits=nBitst, nWords=nWordst, value=valuet} }};
 
-  return {p=vp, s=v.s, t=vt};
+  return {p=crucible_null, s=v.s, t=vt};
+};
+
+let mpz_t (rw : Term) (n : Int) (name : String) = do {
+  v <- mpz_t_setup rw n name;
+  vp <- pointer rw (struct_t "__mpz_struct");
+  points_to vp v.s;
+  return {p=vp, s=v.s, t=v.t};
 };
 
 let mpz_t' (rw : Term) (n : Int) (name : String) (vp : SetupValue) = do {
-  //Here we assume the ElectionGuard-C code will never reference any
-  //of these arguments, so we co-opt them for other purposes.
-
-  //Here we let the first argument represent the number of bits.
-  nBits <- variable uint32_t (str_concat name ".nBits") (STALE {{ `n : [32] }});
-
-  //Here we let the second argument represent the number of words.
-  nWords <- variable uint32_t (str_concat name ".nWords") (STALE {{ `(n /^ 64) : [32] }});
-
-  //Here we let the third argument be a pointer to an allocated list n/^64 64-bit words.
-  value <- alloc rw (llvm_array (eval_int {{ `(n /^ 64) : [32] }}) uint64_t) (str_concat name ".value") FRESH;
-
-  v <- struct [nBits.s, nWords.s, value.p];
-
+  v <- mpz_t_setup rw n name;
   points_to vp v.s;
-
-  let (nBitst,  nWordst,  valuet) =
-      (nBits.t, nWords.t, value.t);
-  let vt = {{ {nBits=nBitst, nWords=nWordst, value=valuet} }};
-
-  return {p=vp, s=v.s, t=vt};
+  return {p=vp, s=v.s, t=v.t};
 };
 
 
