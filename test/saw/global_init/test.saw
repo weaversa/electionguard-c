@@ -1,0 +1,52 @@
+let f_spec = do {
+  a <- crucible_fresh_var "a" (llvm_array 300 (llvm_int 32));
+  ap <- crucible_alloc_readonly (llvm_array 300 (llvm_int 32));
+  crucible_points_to ap (crucible_term a);
+  
+  b <- crucible_fresh_var "b" (llvm_array 300 (llvm_int 32));
+  bp <-crucible_alloc_readonly (llvm_array 300 (llvm_int 32));
+  crucible_points_to bp (crucible_term b);
+
+  rp <- crucible_alloc (llvm_array 300 (llvm_int 32));
+  r <- crucible_fresh_var "r" (llvm_array 300 (llvm_int 32));
+  crucible_points_to rp (crucible_term r);
+
+  crucible_execute_func [rp, ap, bp];
+
+  r' <- crucible_fresh_var "r'" (llvm_array 300 (llvm_int 32));
+  crucible_points_to rp (crucible_term r');
+
+  crucible_equal (crucible_term {{ tail r}})
+                 (crucible_term {{ tail r'}});
+
+  crucible_equal (crucible_term {{ r'@0 }})
+                 (crucible_term {{ a@0 + b@0 }});
+};
+
+test_bc <- llvm_load_module "test.bc";
+
+f_ov <- crucible_llvm_verify test_bc "f" [] true f_spec z3;
+f_ov <- crucible_llvm_unsafe_assume_spec test_bc "f" f_spec;
+
+let g_spec = do {
+  crucible_alloc_global "y";
+  y <- crucible_fresh_var "y" (llvm_array 300 (llvm_int 32));
+  py <- crucible_alloc (llvm_array 300 (llvm_int 32));
+  crucible_points_to py (crucible_term y);
+  crucible_points_to (crucible_global "y") py;
+  
+  a <- crucible_fresh_var "a" (llvm_array 300 (llvm_int 32));
+  ap <- crucible_alloc_readonly (llvm_array 300 (llvm_int 32));
+  crucible_points_to ap (crucible_term a);
+
+  r <- crucible_fresh_var "r" (llvm_array 300 (llvm_int 32));
+  rp <- crucible_alloc (llvm_array 300 (llvm_int 32));
+  crucible_points_to rp (crucible_term r);
+  
+  crucible_execute_func [rp, ap];
+};
+
+
+g_ov <- crucible_llvm_verify test_bc "g" [f_ov] true g_spec z3;
+
+
