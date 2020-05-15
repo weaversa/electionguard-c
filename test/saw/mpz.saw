@@ -21,6 +21,16 @@ let {{
   /* Definition of modular multiplication. */
   mod_mul : {n} (fin n) => [n] -> [n] -> [n] -> [n]
   mod_mul x y p = safe_mod (safe_product x y) p
+
+  /* Definition of modular exponentiation */
+  //Will fail if p == 0
+  mod_pow : {a} (fin a, a >= 1) => [a] -> [a] -> [a] -> [a]
+  mod_pow a b p = (r!0).0
+    where r = [ (1 % p, a % p) ]
+            # [ (if bi then mod_mul ri ai p else ri,
+                 mod_mul ai ai p)
+              | (ri, ai) <- r
+              | bi <- reverse b ]
 }};
 
 //%struct.__mpz_struct = type { i32, i32, i64* }
@@ -170,3 +180,22 @@ let mpz_mod_r_r_spec (nBits : Int) = do {
 
 let mpz_mod_r_r_ov bc n = crucible_llvm_unsafe_assume_spec bc "__gmpz_mod" (mpz_mod_r_r_spec n);
 
+//void mpz_powm (mpz_t rop, const mpz_t base, const mpz_t exp, const mpz_t mod)
+let mpz_powm_spec (nBits : Int) = do {
+  ropp <- pointer WRITE (struct_t "__mpz_struct");
+  base <- mpz_t CONST nBits "base";
+  exp <- mpz_t CONST nBits "exp";
+  mod <- mpz_t CONST nBits "mod";
+
+  execute [ ropp, base.p, exp.p, mod.p];
+
+  rop' <- mpz_t' WRITE nBits "rop'" ropp;
+
+  let (ropt', baset, expt, modt) = (rop'.t, base.t, exp.t, mod.t);
+  equal (from_cryptol {{ from_mpz`{b=nBits} ropt'.value }})
+        (from_cryptol {{ mod_pow (from_mpz`{b=nBits} baset.value)
+	                         (from_mpz`{b=nBits} expt.value)
+				 (from_mpz`{b=nBits} modt.value) }});
+};
+
+let mpz_powm_ov bc n = crucible_llvm_unsafe_assume_spec bc "__gmpz_powm" (mpz_powm_spec n);

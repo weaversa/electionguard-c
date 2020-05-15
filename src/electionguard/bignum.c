@@ -137,13 +137,13 @@ void pow_mod_q(mpz_t res, const mpz_t base, const mpz_t exp)
 {
     mpz_powm(res, base, exp, q);
 
-    TRACE_PRINT(("Performing operation powmod (base^exp)%%p"));
+    TRACE_PRINT(("Performing operation powmod (base^exp)%%q"));
     TRACE_PRINT(("\nbase = "));
     print_base16(base);
     TRACE_PRINT(("\nexp = "));
     print_base16(exp);
     TRACE_PRINT(("\np = "));
-    print_base16(p);
+    print_base16(q);
     TRACE_PRINT(("\nresult = "));
     print_base16(res);
     TRACE_PRINT(("\n"));

@@ -103,6 +103,15 @@ Crypto_parameters_new_ov <- bignum_verify
   z3;
 
 
+//void print_base16(const mpz_t z)
+let print_base16_spec = do {
+  zp <- pointer CONST (struct_t "__mpz_struct");
+  execute [zp];
+};
+
+print_base16_ov <- crucible_llvm_unsafe_assume_spec bignum_bc "print_base16" print_base16_spec;
+
+
 //common global [1 x %struct.__mpz_struct]
 let p_global (rw : Term) = do {
   global_alloc "p";
@@ -110,6 +119,71 @@ let p_global (rw : Term) = do {
   let pt = p.t;
   precond {{ pt.value == p_array }};
 };
+
+
+//void pow_mod_p(mpz_t res, const mpz_t base, const mpz_t exp)
+let pow_mod_p_spec = do {
+  p_global CONST;
+
+  resp <- pointer WRITE (struct_t "__mpz_struct");
+  base <- mpz_t CONST 4096 "base";
+  exp <- mpz_t CONST 4096 "exp";
+
+  execute [resp, base.p, exp.p];
+
+  res' <- mpz_t' WRITE 4096 "res'" resp;
+
+  let (rest', baset, expt) = (res'.t, base.t, exp.t);
+  equal (from_cryptol {{ from_mpz`{b=4096} rest'.value }})
+        (from_cryptol {{ mod_pow (from_mpz`{b=4096} baset.value)
+	                         (from_mpz`{b=4096} expt.value)
+				 (join p_array) }});
+};
+
+mpz_powm_4096_ov <- mpz_powm_ov bignum_bc 4096;
+
+pow_mod_p_test_ov <- bignum_verify
+  "pow_mod_p"
+  [print_base16_ov, mpz_powm_4096_ov]
+  pow_mod_p_spec
+  z3;
+
+
+//common global [1 x %struct.__mpz_struct]
+let q_global (rw : Term) = do {
+  global_alloc "q";
+  q <- mpz_t' CONST 256 "q" (element (global "q") 0);
+  let qt = q.t;
+  precond {{ qt.value == q_array }};
+};
+
+
+//void pow_mod_q(mpz_t res, const mpz_t base, const mpz_t exp)
+let pow_mod_q_spec = do {
+  q_global CONST;
+
+  resp <- pointer WRITE (struct_t "__mpz_struct");
+  base <- mpz_t CONST 256 "base";
+  exp <- mpz_t CONST 256 "exp";
+
+  execute [resp, base.p, exp.p];
+
+  res' <- mpz_t' WRITE 256 "res'" resp;
+
+  let (rest', baset, expt) = (res'.t, base.t, exp.t);
+  equal (from_cryptol {{ from_mpz`{b=256} rest'.value }})
+        (from_cryptol {{ mod_pow (from_mpz`{b=256} baset.value)
+	                         (from_mpz`{b=256} expt.value)
+				 (join q_array) }});
+};
+
+mpz_powm_256_ov <- mpz_powm_ov bignum_bc 256;
+
+pow_mod_q_test_ov <- bignum_verify
+  "pow_mod_q"
+  [print_base16_ov, mpz_powm_256_ov]
+  pow_mod_q_spec
+  z3;
 
 
 //Here we assume that all 3 inputs have 8192 bits to avoid overflow
