@@ -43,7 +43,6 @@ jobs:
       os: linux
 language: c
 script: 
-  - cd test/saw/
-  - mkdir obj
-  - clang -emit-llvm ../../src/electionguard/bignum.c -I../../include/electionguard -I/usr/local/include -I../../src/electionguard -o obj/bignum.bc -c
-  - saw bignum.saw
+  - mkdir test/saw/obj
+  - clang -emit-llvm src/electionguard/bignum.c -Iinclude/electionguard -I/usr/local/include -Isrc/electionguard -o test/saw/obj/bignum.bc -c
+  - saw test/saw/bignum.saw
