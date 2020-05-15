@@ -45,5 +45,5 @@ language: c
 script: 
   - cd test/saw/
   - mkdir obj
-  - clang -g -emit-llvm src/bitvector.c -Iinclude -o obj/bitvector.bc -c
-  - saw bitvector.saw
+  - clang -emit-llvm ../../src/electionguard/bignum.c -I../../include/electionguard -I/usr/local/include -I../../src/electionguard -o obj/bignum.bc -c
+  - saw bignum.saw
