@@ -92,11 +92,11 @@ let mpz_import_spec (count : Int) (size : Int) = do {
   op <- alloc CONST (llvm_array (eval_int {{ `(count * size) : [32] }}) uint8_t) "op" FRESH;
 
   execute [ropp, //!!! TODO fill these parameters in with fresh values later
-           from_cryptol {{ `count : [32] }},
+           from_cryptol {{ `count : [64] }},
            from_cryptol {{ 1 : [32] }},
-           from_cryptol {{ `size : [32] }},
+           from_cryptol {{ `size : [64] }},
            from_cryptol {{ 0 : [32] }},
-           from_cryptol {{ 0 : [32] }},
+           from_cryptol {{ 0 : [64] }},
            op.p];
 
   rop' <- mpz_t' WRITE (eval_int {{ `(count * size * 8) : [32] }}) "rop'" ropp;
