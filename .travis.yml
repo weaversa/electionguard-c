@@ -44,5 +44,5 @@ jobs:
 language: c
 script: 
   - mkdir test/saw/obj
-  - clang -emit-llvm src/electionguard/bignum.c -Iinclude/electionguard -I/usr/local/include -Isrc/electionguard -o test/saw/obj/bignum.bc -c
+  - clang -emit-llvm src/electionguard/bignum.c -Iinclude/electionguard -I/usr/local/include -Isrc/electionguard -o test/saw/obj/bignum.bc -c -O1 -fsanitize-trap=undefined -fsanitize=undefined
   - saw test/saw/bignum.saw
