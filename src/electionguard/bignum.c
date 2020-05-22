@@ -161,10 +161,13 @@ void mul_mod_p(mpz_t res, const mpz_t a, const mpz_t b)
 //lookup table to achieve log n performance relative to the value being decrypted
 bool log_generator_mod_p(mpz_t result, mpz_t a)
 {
-    mpz_t max_decryption;
-    mpz_init(max_decryption);
-    mpz_set_ui(max_decryption, 5000000);
+  //    mpz_t max_decryption;
+    //    mpz_init(max_decryption);
+    //    mpz_set_ui(max_decryption, 5000000);
+    uint32_t max_decryption_u32 = 10;
+    //    mpz_set_ui(max_decryption, max_decryption_u32);
 
+    uint32_t result_i32 = 0;
     mpz_set_ui(result, 0);
     mpz_t powmod;
     mpz_init(powmod);
@@ -176,9 +179,11 @@ bool log_generator_mod_p(mpz_t result, mpz_t a)
 #ifdef DEBUG_PRINT
         print_base16(powmod);
 #endif
-    if(mpz_cmp(a,max_decryption) == 0){
-        return false;
-    }
+        if(result_i32++ == max_decryption_u32) return false;
+        // This won't work until (at least) sat branches is fixed
+        //        if(mpz_cmp(result, max_decryption) == 0){
+        //          return false;
+        //        }
     }
     return true;
 }

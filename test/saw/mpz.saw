@@ -39,6 +39,9 @@ let {{
                  mod_mul ai ai p)
               | (ri, ai) <- r
               | bi <- reverse b ]
+
+  cmp: {a, b} (fin a, fin b, b >= 1) => [a] -> [a] -> [b]
+  cmp x y = if (x == y) then 0 else if (x < y) then (-1) else 1
 }};
 
 //%struct.__mpz_struct = type { i32, i32, i64* }
@@ -152,6 +155,44 @@ let mpz_add_spec (nBits : Int) = do {
 let mpz_add_ov bc n = crucible_llvm_unsafe_assume_spec bc "__gmpz_add" (mpz_add_spec n);
 
 
+//void mpz_add_ui (mpz_t rop, const mpz_t op1, unsigned long int op2)
+let mpz_add_ui_spec (nBits : Int) = do {
+  ropp <- pointer WRITE (struct_t "__mpz_struct");
+  op1 <- mpz_t CONST nBits "op1";
+  op2 <- variable uint64_t "op2" FRESH;
+
+  execute [ropp, op1.p, op2.s];
+
+  rop' <- mpz_t' WRITE nBits "rop'" ropp;
+
+  let (ropt', op1t, op2t) = (rop'.t, op1.t, op2.t);
+  equal (from_cryptol {{ from_mpz`{b=nBits} ropt'.value }})
+        (from_cryptol {{ (from_mpz`{b=nBits} op1t.value) + (0 # op2t) }});
+
+  postcond {{ carry (from_mpz`{b=nBits} op1t.value) + (0 # op2t) == False }};
+};
+
+let mpz_add_ui_ov bc n = crucible_llvm_unsafe_assume_spec bc "__gmpz_add_ui" (mpz_add_ui_spec n);
+
+//void mpz_add_ui (mpz_t rop, mpz_t rop, unsigned long int op2)
+let mpz_add_ui_r_r_spec (nBits : Int) = do {
+  rop <- mpz_t WRITE nBits "r";
+  op2 <- variable uint64_t "op2" FRESH;
+
+  execute [rop.p, rop.p, op2.s];
+
+  rop' <- mpz_t' WRITE nBits "rop'" rop.p;
+
+  let (ropt', ropt, op2t) = (rop'.t, rop.t, op2.t);
+  equal (from_cryptol {{ from_mpz`{b=nBits} ropt'.value }})
+        (from_cryptol {{ (from_mpz`{b=nBits} ropt.value) + (0 # op2t) }});
+
+  postcond {{ carry (from_mpz`{b=nBits} ropt.value) (0 # op2t) == False }};
+};
+
+let mpz_add_ui_r_r_ov bc n = crucible_llvm_unsafe_assume_spec bc "__gmpz_add_ui" (mpz_add_ui_r_r_spec n);
+
+
 //void mpz_sub (mpz_t rop, const mpz_t op1, const mpz_t op2)
 let mpz_sub_spec (nBits : Int) = do {
   ropp <- pointer WRITE (struct_t "__mpz_struct");
@@ -188,39 +229,56 @@ let mpz_mul_spec (nBits : Int) = do {
 let mpz_mul_ov bc n = crucible_llvm_unsafe_assume_spec bc "__gmpz_mul" (mpz_mul_spec n);
 
 
+//void mpz_mul (mpz_t rop, mpz_t rop, const mpz_t op2)
+let mpz_mul_r_r_spec (nBits : Int) = do {
+  rop <- mpz_t WRITE nBits "rop";
+  op2 <- mpz_t CONST nBits "op2";
+
+  execute [rop.p, rop.p, op2.p];
+
+  rop' <- mpz_t' WRITE (eval_int {{ `nBits * 2 : [32] }}) "rop'" rop.p;
+
+  let (ropt', ropt, op2t) = (rop'.t, rop.t, op2.t);
+  equal (from_cryptol {{ from_mpz`{b=nBits*2} ropt'.value }})
+        (from_cryptol {{ safe_product (from_mpz`{b=nBits} ropt.value) (from_mpz`{b=nBits} op2t.value) }});
+};
+
+let mpz_mul_r_r_ov bc n = crucible_llvm_unsafe_assume_spec bc "__gmpz_mul" (mpz_mul_r_r_spec n);
+
+
 //void mpz_mod (mpz_t r, const mpz_t n, const mpz_t d)
-let mpz_mod_spec (nBits : Int) = do {
+let mpz_mod_spec (in_Bits : Int) (res_Bits : Int) = do {
   rp <- pointer WRITE (struct_t "__mpz_struct");
-  n <- mpz_t CONST (eval_int {{ `nBits * 2 : [32] }}) "n";
-  d <- mpz_t CONST nBits "d";
+  n <- mpz_t CONST in_Bits "n";
+  d <- mpz_t CONST res_Bits "d";
 
   execute [rp, n.p, d.p];
 
-  r' <- mpz_t' WRITE nBits "r'" rp;
-
+  r' <- mpz_t' WRITE res_Bits "r'" rp;
   let (rt', nt, dt) = (r'.t, n.t, d.t);
-  equal (from_cryptol {{ from_mpz`{b=nBits} rt'.value }})
-        (from_cryptol {{ safe_mod (from_mpz`{b=nBits*2} nt.value) (from_mpz`{b=nBits} dt.value) }});
+  equal (from_cryptol {{ from_mpz`{b=res_Bits} rt'.value }})
+        (from_cryptol {{ safe_mod (from_mpz`{b=in_Bits} nt.value) (from_mpz`{b=res_Bits} dt.value) }});
 };
 
-let mpz_mod_ov bc n = crucible_llvm_unsafe_assume_spec bc "__gmpz_mod" (mpz_mod_spec n);
+let mpz_mod_ov bc n m = crucible_llvm_unsafe_assume_spec bc "__gmpz_mod" (mpz_mod_spec n m);
 
 
 //void mpz_mod (mpz_t r, mpz_t r, const mpz_t d)
-let mpz_mod_r_r_spec (nBits : Int) = do {
-  r <- mpz_t WRITE (eval_int {{ `nBits * 2 : [32] }}) "r";
-  d <- mpz_t CONST nBits "d";
+let mpz_mod_r_r_spec (in_Bits : Int) (res_Bits : Int) = do {
+  r <- mpz_t WRITE in_Bits "r";
+  d <- mpz_t CONST res_Bits "d";
 
   execute [r.p, r.p, d.p];
 
-  r' <- mpz_t' WRITE nBits "r'" r.p;
+  r' <- mpz_t' WRITE res_Bits "r'" r.p;
 
   let (rt', rt, dt) = (r'.t, r.t, d.t);
-  equal (from_cryptol {{ from_mpz`{b=nBits} rt'.value }})
-        (from_cryptol {{ safe_mod (from_mpz`{b=nBits*2} rt.value) (from_mpz`{b=nBits} dt.value) }});
+  equal (from_cryptol {{ from_mpz`{b=res_Bits} rt'.value }})
+        (from_cryptol {{ safe_mod (from_mpz`{b=in_Bits} rt.value) (from_mpz`{b=res_Bits} dt.value) }});
 };
 
-let mpz_mod_r_r_ov bc n = crucible_llvm_unsafe_assume_spec bc "__gmpz_mod" (mpz_mod_r_r_spec n);
+let mpz_mod_r_r_ov bc n m = crucible_llvm_unsafe_assume_spec bc "__gmpz_mod" (mpz_mod_r_r_spec n m);
+
 
 //void mpz_powm (mpz_t rop, const mpz_t base, const mpz_t exp, const mpz_t mod)
 let mpz_powm_spec (nBits : Int) = do {
@@ -241,3 +299,19 @@ let mpz_powm_spec (nBits : Int) = do {
 };
 
 let mpz_powm_ov bc n = crucible_llvm_unsafe_assume_spec bc "__gmpz_powm" (mpz_powm_spec n);
+
+
+//int mpz_cmp (const mpz_t op1, const mpz_t op2)
+let mpz_cmp_spec (nBits : Int) = do {
+  op1 <- mpz_t CONST nBits "op1";
+  op2 <- mpz_t CONST nBits "op2";
+
+  execute [ op1.p, op2.p];
+
+  let (op1t, op2t) = (op1.t, op2.t);
+  let prop = from_cryptol {{ (cmp (from_mpz `{b=nBits} op1t.value)
+                                  (from_mpz `{b=nBits} op2t.value)):[32] }};
+  crucible_return (prop);
+};
+
+let mpz_cmp_ov bc n = crucible_llvm_unsafe_assume_spec bc "__gmpz_cmp" (mpz_cmp_spec n);

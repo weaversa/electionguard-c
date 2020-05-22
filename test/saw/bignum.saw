@@ -65,7 +65,7 @@ let p_global (rw : Term) = do {
 //common global [1 x %struct.__mpz_struct]
 let generator_global (rw : Term) = do {
   global_alloc "generator";
-  g <- mpz_t' CONST 4096 "p" (element (global "generator") 0);
+  g <- mpz_t' CONST 4096 "generator" (element (global "generator") 0);
   let gt = g.t;
   precond {{ gt.value == g_array }};
 };
@@ -192,7 +192,6 @@ pow_mod_q_test_ov <- bignum_verify
   (unint_z3 ["mod_pow"]);
 
 
-//Here we assume that all 3 inputs have 8192 bits to avoid overflow
 //void mul_mod_p(mpz_t res, const mpz_t a, const mpz_t b)
 let mul_mod_p_spec = do {
   p_global CONST;
@@ -211,11 +210,63 @@ let mul_mod_p_spec = do {
 };
 
 mpz_mul_4096_ov <- mpz_mul_ov bignum_bc 4096;
-mpz_mod_r_r_4096_ov <- mpz_mod_r_r_ov bignum_bc 4096;
+mpz_mod_r_r_8192_4096_ov <- mpz_mod_r_r_ov bignum_bc 8192 4096;
 
 mul_mod_p_ov <- bignum_verify
   "mul_mod_p"
-  [mpz_mul_4096_ov, mpz_mod_r_r_4096_ov]
+  [mpz_mul_4096_ov, mpz_mod_r_r_8192_4096_ov]
   mul_mod_p_spec
   (unint_z3 ["safe_product", "safe_mod"]);
+
+//void mul_mod_p(mpz_t res, const mpz_t res, const mpz_t b)
+let mul_mod_p_r_r_spec = do {
+  p_global CONST;
+
+  res <- mpz_t WRITE 4096 "res";
+  b <- mpz_t CONST 4096 "b";
+
+  execute [res.p, res.p, b.p];
+
+  res' <- mpz_t' WRITE 4096 "resp'" res.p;
+
+  let (rest', rest, bt) = (res'.t, res.t, b.t);
+  equal (from_cryptol {{ from_mpz`{b=4096} rest'.value }})
+        (from_cryptol {{ mod_mul (from_mpz`{b=4096} rest.value) (from_mpz`{b=4096} bt.value) (from_mpz`{b=4096} p_array) }});
+};
+
+mpz_mul_r_r_4096_ov <- mpz_mul_r_r_ov bignum_bc 4096;
+
+mul_mod_p_ov <- bignum_verify
+  "mul_mod_p"
+  [mpz_mul_4096_ov, mpz_mod_r_r_8192_4096_ov]
+  mul_mod_p_spec
+  (unint_z3 ["safe_product", "safe_mod"]);
+
+mul_mod_p_r_r_ov <- bignum_verify
+  "mul_mod_p"
+  [mpz_mul_r_r_4096_ov, mpz_mod_r_r_8192_4096_ov]
+  mul_mod_p_r_r_spec
+  (unint_z3 ["safe_product", "safe_mod"]);
+
+
+//bool log_generator_mod_p(mpz_t result, mpz_t a)
+let log_generator_mod_p_spec = do {
+  p_global CONST;
+  generator_global CONST;
+
+  result <- mpz_t WRITE 4096 "result";
+  a <- mpz_t CONST 4096 "a";
+
+  execute [result.p, a.p];
+
+};
+
+mpz_add_ui_r_r_4096_ov <- mpz_add_ui_r_r_ov bignum_bc 4096;
+mpz_cmp_4096_ov <- mpz_cmp_ov bignum_bc 4096;
+
+log_generator_mod_p_ov <- bignum_verify
+  "log_generator_mod_p"
+  [print_base16_ov, mpz_init_4096_ov, mpz_set_ui_4096_ov, mpz_add_ui_r_r_4096_ov, mpz_mul_r_r_4096_ov, mpz_mod_r_r_8192_4096_ov /*mul_mod_p_r_r_ov*/, mpz_cmp_4096_ov]
+  log_generator_mod_p_spec
+  z3;
 
