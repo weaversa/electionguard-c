@@ -49,13 +49,40 @@ let {{
     0x098A8C1EFD3CD28A, 0x6B79306CA2C20C55, 0x174218A3935F697E,
     0x813628D2D861BE54] : [64][64]
 
-  q_array = [0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
-             0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFF43] : [4][64]
+  q_array = zero
+          # [0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF,
+             0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFF43] : [64][64]
 }};
+
+//common global [1 x %struct.__mpz_struct]
+let p_global (rw : Term) = do {
+  global_alloc "p";
+  p <- mpz_t' CONST 4096 "p" (element (global "p") 0);
+  let pt = p.t;
+  precond {{ pt.value == p_array }};
+};
+
+//common global [1 x %struct.__mpz_struct]
+let generator_global (rw : Term) = do {
+  global_alloc "generator";
+  g <- mpz_t' CONST 4096 "p" (element (global "generator") 0);
+  let gt = g.t;
+  precond {{ gt.value == g_array }};
+};
+
+//common global [1 x %struct.__mpz_struct]
+let q_global (rw : Term) = do {
+  global_alloc "q";
+  q <- mpz_t' CONST 4096 "q" (element (global "q") 0);
+  let qt = q.t;
+  precond {{ qt.value == q_array }};
+};
+
 
 bignum_bc <- llvm_load_module "obj/bignum.bc";
 
 let bignum_verify function_name overrides spec solver = crucible_llvm_verify bignum_bc function_name overrides true spec solver;
+
 
 //void Crypto_parameters_new()
 let Crypto_parameters_new_spec = do {
@@ -74,10 +101,9 @@ let Crypto_parameters_new_spec = do {
   let generatort = generator.t;
   postcond {{ from_mpz`{b=4096} generatort.value == join g_array }};
 
-  //!!! 384?
-  bignum_one <- mpz_t' WRITE 384 "bignum_one" (element (global "bignum_one") 0);
+  bignum_one <- mpz_t' WRITE 4096 "bignum_one" (element (global "bignum_one") 0);
   let bignum_onet = bignum_one.t;
-  postcond {{ from_mpz`{b=384} bignum_onet.value == 1 }};
+  postcond {{ from_mpz`{b=4096} bignum_onet.value == 1 }};
 
   p <- mpz_t' WRITE 4096 "p" (element (global "p") 0);
   let pt = p.t;
@@ -85,7 +111,7 @@ let Crypto_parameters_new_spec = do {
 
   q <- mpz_t' WRITE 256 "q" (element (global "q") 0);
   let qt = q.t;
-  postcond {{ from_mpz`{b=256} qt.value == join q_array }};
+  postcond {{ from_mpz`{b=256} qt.value == join (drop q_array) }};
 };
 
 //Create overrides
@@ -93,12 +119,12 @@ mpz_init_4096_ov <- mpz_init_ov bignum_bc 4096;
 mpz_init_256_ov <- mpz_init_ov bignum_bc 256;
 mpz_import_64_8_ov <- mpz_import_ov bignum_bc 64 8;
 mpz_import_4_8_ov <- mpz_import_ov bignum_bc 4 8;
-mpz_set_ui_384_ov <- mpz_set_ui_ov bignum_bc 384;
+mpz_set_ui_4096_ov <- mpz_set_ui_ov bignum_bc 4096;
 
 //Verify function
 Crypto_parameters_new_ov <- bignum_verify
   "Crypto_parameters_new"
-  [mpz_init_4096_ov, mpz_init_256_ov, mpz_import_64_8_ov, mpz_import_4_8_ov, mpz_set_ui_384_ov]
+  [mpz_init_4096_ov, mpz_import_64_8_ov, mpz_import_4_8_ov, mpz_set_ui_4096_ov]
   Crypto_parameters_new_spec
   z3;
 
@@ -110,15 +136,6 @@ let print_base16_spec = do {
 };
 
 print_base16_ov <- crucible_llvm_unsafe_assume_spec bignum_bc "print_base16" print_base16_spec;
-
-
-//common global [1 x %struct.__mpz_struct]
-let p_global (rw : Term) = do {
-  global_alloc "p";
-  p <- mpz_t' CONST 4096 "p" (element (global "p") 0);
-  let pt = p.t;
-  precond {{ pt.value == p_array }};
-};
 
 
 //void pow_mod_p(mpz_t res, const mpz_t base, const mpz_t exp)
@@ -146,16 +163,7 @@ pow_mod_p_test_ov <- bignum_verify
   "pow_mod_p"
   [print_base16_ov, mpz_powm_4096_ov]
   pow_mod_p_spec
-  z3;
-
-
-//common global [1 x %struct.__mpz_struct]
-let q_global (rw : Term) = do {
-  global_alloc "q";
-  q <- mpz_t' CONST 256 "q" (element (global "q") 0);
-  let qt = q.t;
-  precond {{ qt.value == q_array }};
-};
+  (unint_z3 ["mod_pow"]);
 
 
 //void pow_mod_q(mpz_t res, const mpz_t base, const mpz_t exp)
@@ -163,27 +171,25 @@ let pow_mod_q_spec = do {
   q_global CONST;
 
   resp <- pointer WRITE (struct_t "__mpz_struct");
-  base <- mpz_t CONST 256 "base";
-  exp <- mpz_t CONST 256 "exp";
+  base <- mpz_t CONST 4096 "base";
+  exp <- mpz_t CONST 4096 "exp";
 
   execute [resp, base.p, exp.p];
 
-  res' <- mpz_t' WRITE 256 "res'" resp;
+  res' <- mpz_t' WRITE 4096 "res'" resp;
 
   let (rest', baset, expt) = (res'.t, base.t, exp.t);
-  equal (from_cryptol {{ from_mpz`{b=256} rest'.value }})
-        (from_cryptol {{ mod_pow (from_mpz`{b=256} baset.value)
-	                         (from_mpz`{b=256} expt.value)
+  equal (from_cryptol {{ from_mpz`{b=4096} rest'.value }})
+        (from_cryptol {{ mod_pow (from_mpz`{b=4096} baset.value)
+	                         (from_mpz`{b=4096} expt.value)
 				 (join q_array) }});
 };
 
-mpz_powm_256_ov <- mpz_powm_ov bignum_bc 256;
-
 pow_mod_q_test_ov <- bignum_verify
   "pow_mod_q"
-  [print_base16_ov, mpz_powm_256_ov]
+  [print_base16_ov, mpz_powm_4096_ov]
   pow_mod_q_spec
-  z3;
+  (unint_z3 ["mod_pow"]);
 
 
 //Here we assume that all 3 inputs have 8192 bits to avoid overflow
@@ -211,4 +217,5 @@ mul_mod_p_ov <- bignum_verify
   "mul_mod_p"
   [mpz_mul_4096_ov, mpz_mod_r_r_4096_ov]
   mul_mod_p_spec
-  (unint_z3 ["safe_product"]);
+  (unint_z3 ["safe_product", "safe_mod"]);
+
