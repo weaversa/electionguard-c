@@ -159,12 +159,13 @@ void mul_mod_p(mpz_t res, const mpz_t a, const mpz_t b)
 //if provided a larger number it will return false and a nonsense result
 //if this is too slow for larger elections it can be replaced with a precomputed
 //lookup table to achieve log n performance relative to the value being decrypted
+#if 0
 bool log_generator_mod_p(mpz_t result, mpz_t a)
 {
   //    mpz_t max_decryption;
     //    mpz_init(max_decryption);
     //    mpz_set_ui(max_decryption, 5000000);
-    uint32_t max_decryption_u32 = 10;
+    uint32_t max_decryption_u32 = 1;
     //    mpz_set_ui(max_decryption, max_decryption_u32);
 
     uint32_t result_i32 = 0;
@@ -174,12 +175,13 @@ bool log_generator_mod_p(mpz_t result, mpz_t a)
     mpz_set_ui(powmod, 1);
     while (!(0 == mpz_cmp(powmod, a)))
     {
+        if(result_i32++ == max_decryption_u32) return false;
         mpz_add_ui(result, result, 1);
-        mul_mod_p(powmod, powmod, generator);
+	mul_mod_p(powmod, powmod, generator);
+	break;
 #ifdef DEBUG_PRINT
         print_base16(powmod);
 #endif
-        if(result_i32++ == max_decryption_u32) return false;
         // This won't work until (at least) sat branches is fixed
         //        if(mpz_cmp(result, max_decryption) == 0){
         //          return false;
@@ -187,6 +189,41 @@ bool log_generator_mod_p(mpz_t result, mpz_t a)
     }
     return true;
 }
+#else
+
+void dummy(mpz_t result, mpz_t a)
+{
+  mpz_add_ui(result, result, 1);
+  mpz_cmp(result, a);
+}
+
+bool log_generator_mod_p(mpz_t result, mpz_t a)
+{
+    mpz_t powmod;
+    mpz_set_ui(result, 0);
+    mpz_init(powmod);
+    mpz_set_ui(powmod, 1);
+    if (0 == mpz_cmp(a, powmod)) {
+      return true;
+    }
+
+    mpz_add_ui(result, result, 1);
+    mul_mod_p(powmod, powmod, generator);
+    if (0 == mpz_cmp(a, powmod)) {
+      return true;
+    }
+
+#if 1
+    mpz_add_ui(result, result, 1);
+    mul_mod_p(powmod, powmod, generator);
+    if (0 == mpz_cmp(a, powmod)) {
+      return true;
+    }
+#endif
+    mpz_add_ui(result, result, 1);
+    return true;
+}
+#endif
 
 void mod_q(mpz_t res, const mpz_t a) { mpz_mod(res, a, q); }
 

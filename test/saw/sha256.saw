@@ -1,0 +1,64 @@
+include "llvm.saw";
+import "SHA256.cry";
+
+sha256_bc <- llvm_load_module "obj/sha256.bc";
+
+let {{
+ rev_endian_32 v = join (reverse (split `{4} v))
+}};
+
+let sha256init_spec = do {
+  vp <- pointer WRITE (struct_t "_SHA2_CTX");
+  
+  execute [vp];
+
+  crucible_points_to_untyped (crucible_field vp "state") (from_cryptol {{ H0 }});
+};
+
+let ctx_struct (name : String) = do {
+  state <- variable (llvm_array 8 (llvm_int 32)) (str_concat name ".state") FRESH;
+  bitcount <- variable (llvm_array 2 (llvm_int 64)) (str_concat name ".bitcount") FRESH;
+  buffer <- variable (llvm_array 128 (llvm_int 8)) (str_concat name ".buffer") FRESH;
+  ctx <- struct [(crucible_struct [state.s]), bitcount.s, buffer.s];
+
+  let (statet, bitcount, buffert) = (state.t, bitcount.t, buffer.t);
+  // define a record so we can access the term like with .field
+  let ctxt = {{ {state=statet, bitcount=bitcount, buffer=buffert} }};
+  return {p=crucible_null, s=ctx.s, t=ctxt};
+};
+
+let ctx_new_ptr (name : String) = do {
+  ctx <- ctx_struct name;
+  ctxp <- pointer WRITE (llvm_struct "struct._SHA2_CTX") ;
+  points_to ctxp ctx.s;  
+  return {p=ctxp, s=ctx.s, t=ctx.t};
+};
+
+let ctx_assign_ptr (name: String) (ctxp : SetupValue) = do {
+  ctx <- ctx_struct name;
+  points_to ctxp ctx.s;  
+  return {p=ctxp, s=ctx.s, t=ctx.t};
+};
+
+let sha256transform_spec = do {
+  ctx <- ctx_new_ptr "pre_hash";
+
+  data <- variable (llvm_array 16 (llvm_int 32)) "data" FRESH;
+  datap <- pointer CONST (llvm_array 16 (llvm_int 32));
+  points_to datap data.s;
+
+  execute [ctx.p, datap];
+
+  res <- ctx_assign_ptr "post_hash" ctx.p;
+
+  let (pre_ctx, post_ctx, data_term) = (ctx.t, res.t, data.t);
+
+  postcond {{ SHA256Block pre_ctx.state (map rev_endian_32 data_term) == post_ctx.state}};
+};
+
+
+//crucible_llvm_verify sha256_bc "SHA256Init" [] true sha256init_spec abc;
+crucible_llvm_verify sha256_bc "SHA256Transform" [] true sha256transform_spec yices;
+//crucible_llvm_verify sha256_bc "SHA256Transform" [] true sha256transform_spec (quickcheck 10);
+
+

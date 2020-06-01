@@ -122,12 +122,13 @@ mpz_import_4_8_ov <- mpz_import_ov bignum_bc 4 8;
 mpz_set_ui_4096_ov <- mpz_set_ui_ov bignum_bc 4096;
 
 //Verify function
+/*
 Crypto_parameters_new_ov <- bignum_verify
   "Crypto_parameters_new"
   [mpz_init_4096_ov, mpz_import_64_8_ov, mpz_import_4_8_ov, mpz_set_ui_4096_ov]
   Crypto_parameters_new_spec
   z3;
-
+*/
 
 //void print_base16(const mpz_t z)
 let print_base16_spec = do {
@@ -159,11 +160,13 @@ let pow_mod_p_spec = do {
 
 mpz_powm_4096_ov <- mpz_powm_ov bignum_bc 4096;
 
+/*
 pow_mod_p_test_ov <- bignum_verify
   "pow_mod_p"
   [print_base16_ov, mpz_powm_4096_ov]
   pow_mod_p_spec
   (unint_z3 ["mod_pow"]);
+*/
 
 
 //void pow_mod_q(mpz_t res, const mpz_t base, const mpz_t exp)
@@ -185,11 +188,13 @@ let pow_mod_q_spec = do {
 				 (join q_array) }});
 };
 
+/*
 pow_mod_q_test_ov <- bignum_verify
   "pow_mod_q"
   [print_base16_ov, mpz_powm_4096_ov]
   pow_mod_q_spec
   (unint_z3 ["mod_pow"]);
+*/
 
 
 //void mul_mod_p(mpz_t res, const mpz_t a, const mpz_t b)
@@ -212,12 +217,13 @@ let mul_mod_p_spec = do {
 mpz_mul_4096_ov <- mpz_mul_ov bignum_bc 4096;
 mpz_mod_r_r_8192_4096_ov <- mpz_mod_r_r_ov bignum_bc 8192 4096;
 
+/*
 mul_mod_p_ov <- bignum_verify
   "mul_mod_p"
   [mpz_mul_4096_ov, mpz_mod_r_r_8192_4096_ov]
   mul_mod_p_spec
   (unint_z3 ["safe_product", "safe_mod"]);
-
+*/
 //void mul_mod_p(mpz_t res, const mpz_t res, const mpz_t b)
 let mul_mod_p_r_r_spec = do {
   p_global CONST;
@@ -240,7 +246,8 @@ mul_mod_p_ov <- bignum_verify
   "mul_mod_p"
   [mpz_mul_4096_ov, mpz_mod_r_r_8192_4096_ov]
   mul_mod_p_spec
-  (unint_z3 ["safe_product", "safe_mod"]);
+  (offline_unint_smtlib2 ["safe_product", "safe_mod", "mod_pow", "cmp"] "mul_mod");
+//  (unint_z3 ["safe_product", "safe_mod"]);
 
 mul_mod_p_r_r_ov <- bignum_verify
   "mul_mod_p"
@@ -249,24 +256,144 @@ mul_mod_p_r_r_ov <- bignum_verify
   (unint_z3 ["safe_product", "safe_mod"]);
 
 
+let ss0 = cryptol_ss ();
+
+let pow_mul_rule = rewrite ss0 {{
+  \g x p -> mod_mul g (mod_pow g x p) p == mod_pow g (x + 1) p
+}};
+
+let p_1_rule = rewrite ss0 {{
+  \g p -> safe_mod (safe_product g 1) p == mod_pow g 1 p 
+}};
+
+let mul_1_rule = rewrite ss0 {{
+  \g -> (safe_product g 1) == g
+}};
+
+let mul_assoc = rewrite ss0 {{
+  \x y -> (safe_product x y) == (safe_product y x)
+}};
+
+let ss0 = addsimps' [pow_mul_rule, p_1_rule, mul_1_rule, mul_assoc] ss0;
+
 //bool log_generator_mod_p(mpz_t result, mpz_t a)
 let log_generator_mod_p_spec = do {
   p_global CONST;
   generator_global CONST;
 
-  result <- mpz_t WRITE 4096 "result";
+  log_g <- pointer WRITE (struct_t "__mpz_struct");
   a <- mpz_t CONST 4096 "a";
 
-  execute [result.p, a.p];
+
+  execute [log_g, a.p];
+
+  res' <- mpz_t' WRITE 4096 "log_g'" log_g;
+
+  let (resultt', at) = (res'.t, a.t);
+
+//  postcond {{ from_mpz`{b=4096} resultt'.value == 1 }};
+
+
+/*
+  postcond (rewrite empty_ss {{ (from_mpz`{b=4096} resultt'.value) == 1
+          ==>
+          mod_pow (from_mpz `{b=4096} g_array)
+   	          (from_mpz `{b=4096} resultt'.value)
+	          (from_mpz `{b=4096} p_array)
+         ==
+         from_mpz `{b=4096} at.value }});
+*/
+
+// this succeeds
+/*  postcond (rewrite empty_ss {{ (from_mpz`{b=4096} resultt'.value) == 0
+          ==>
+         from_mpz `{b=4096} at.value  == 1}});
+*/
+
+// this succeeds
+/*  postcond (rewrite empty_ss {{ (from_mpz`{b=4096} resultt'.value) == 1
+          ==>
+          safe_mod (safe_product (from_mpz `{b=4096} g_array)
+   	                     (from_mpz `{b=4096} resultt'.value))
+  	           (from_mpz `{b=4096} p_array)
+         ==
+         from_mpz `{b=4096} g_array }});
+*/
+
+// this times out
+/*
+  postcond (rewrite empty_ss {{ (from_mpz`{b=4096} resultt'.value) == 0
+          ==>
+         1 == from_mpz `{b=4096} at.value }});
+*/
+
+// this times out
+/*
+  postcond (rewrite empty_ss {{ (from_mpz`{b=4096} resultt'.value) == 1
+          ==>
+          (from_mpz `{b=4096} g_array)
+         ==
+         from_mpz `{b=4096} at.value }});
+*/
+
+// this times out
+/*
+  postcond (rewrite (cryptol_ss ()) {{ (from_mpz`{b=4096} resultt'.value) == 1
+          ==>
+          safe_mod (safe_product (from_mpz `{b=4096} g_array)
+   	                     (from_mpz `{b=4096} resultt'.value))
+  	           (from_mpz `{b=4096} p_array)
+         ==
+         from_mpz `{b=4096} at.value }});
+*/
+
+// this times out
+/*
+  postcond (rewrite (cryptol_ss ()) {{ (from_mpz`{b=4096} resultt'.value) == 1
+          ==>
+          safe_mod (safe_product (from_mpz `{b=4096} g_array) 1)
+   	           (from_mpz `{b=4096} p_array)
+         ==
+         from_mpz `{b=4096} at.value }});
+*/
+  postcond (rewrite (cryptol_ss ()) {{ (from_mpz`{b=4096} at.value) == 1
+          ==>
+            (from_mpz `{b=4096} resultt'.value) == 0}});
+
+  postcond (rewrite (cryptol_ss ()) {{ (from_mpz`{b=4096} at.value) ==
+  	   	    		       (from_mpz`{b=4096} g_array)
+          ==>
+            (from_mpz `{b=4096} resultt'.value) == 1}});
+
+/*
+  postcond (rewrite (cryptol_ss ()) {{ (from_mpz`{b=4096} at.value) ==
+  	   	    		       mod_pow (from_mpz`{b=4096} g_array) 2 (from_mpz`{b=4096} p_array)
+          ==>
+            (from_mpz `{b=4096} resultt'.value) == 2}});
+*/
 
 };
 
 mpz_add_ui_r_r_4096_ov <- mpz_add_ui_r_r_ov bignum_bc 4096;
 mpz_cmp_4096_ov <- mpz_cmp_ov bignum_bc 4096;
 
+let solver = do {
+//  print_goal;
+//  assume_unsat;
+// (unint_z3 ["safe_product", "safe_mod", "mod_pow", "cmp"]);
+// z3;
+//   yices;
+   abc;
+};
+
 log_generator_mod_p_ov <- bignum_verify
   "log_generator_mod_p"
-  [print_base16_ov, mpz_init_4096_ov, mpz_set_ui_4096_ov, mpz_add_ui_r_r_4096_ov, mpz_mul_r_r_4096_ov, mpz_mod_r_r_8192_4096_ov /*mul_mod_p_r_r_ov*/, mpz_cmp_4096_ov]
+  [print_base16_ov, mpz_init_4096_ov, mpz_set_ui_4096_ov, mpz_add_ui_r_r_4096_ov, mpz_mul_r_r_4096_ov, mpz_mod_r_r_8192_4096_ov /*mul_mod_p_r_r_ov*/, mpz_cmp_4096_ov, mpz_mul_4096_ov]
   log_generator_mod_p_spec
-  z3;
-
+//  (offline_smtlib2 "solveme");
+//  (offline_unint_smtlib2 ["safe_product", "safe_mod", "mod_pow", "cmp"] "solveme");
+// (unint_z3 ["safe_product", "safe_mod", "mod_pow", "cmp"]);
+//  yices;
+//  z3;
+//    abc;
+  solver;

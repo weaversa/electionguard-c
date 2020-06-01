@@ -66,10 +66,15 @@ void force_memset(void *ptr, size_t len);
 
 
 /*** SHA-256/384/512 Context Structure *******************************/
+//#define SAW
 typedef struct _SHA2_CTX {
 	union {
 		uint32_t	st32[8];
+#ifdef SAW
+		uint32_t	st64[8];
+#else
 		uint64_t	st64[8];
+#endif	  
 	} state;
 	uint64_t	bitcount[2];
 	uint8_t	buffer[SHA512_BLOCK_LENGTH];
