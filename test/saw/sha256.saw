@@ -40,39 +40,35 @@ let ctx_assign_ptr (name: String) (ctxp : SetupValue) = do {
   return {p=ctxp, s=ctx.s, t=ctx.t};
 };
 
+//void @SHA256Transform(%struct._SHA2_CTX* %0, i8* %1)
 let sha256transform_spec = do {
   ctx <- ctx_new_ptr "pre_hash";
+  data <- alloc CONST (llvm_array 64 (llvm_int 8)) "data" FRESH;
 
-  data <- variable (llvm_array 16 (llvm_int 32)) "data" FRESH;
-  datap <- pointer CONST (llvm_array 16 (llvm_int 32));
-  points_to datap data.s;
-
-  execute [ctx.p, datap];
+  execute [ctx.p, data.p];
 
   res <- ctx_assign_ptr "post_hash" ctx.p;
 
   let (pre_ctx, post_ctx, data_term) = (ctx.t, res.t, data.t);
 
-  postcond {{ SHA256Block pre_ctx.state (map rev_endian_32 data_term) == post_ctx.state}};
+  postcond {{ SHA256Block pre_ctx.state (split`{16} (join data_term)) == post_ctx.state}};
 };
 
 let sha256update_spec = do {
   ctx <- ctx_new_ptr "preupdate_hash";
 
-  data <- variable (llvm_array 512 (llvm_int 8)) "data" FRESH;
-  datap <- pointer CONST (llvm_array 512 (llvm_int 8));
+  data <- alloc CONST (llvm_array 512 (llvm_int 8)) "data" FRESH;
 
-  len <- variable uint32_t "len" (STALE {{ 512 : [64] }});
+  len <- variable uint64_t "len" (STALE {{ 512 : [64] }});
   
   execute [ctx.p, data.p, len.s];
 };
 
-sha256transform_ov <- crucible_llvm_unsafe_assume_spec sha256_bc "SHA256Transform"
-                      sha256transform_spec;
-
+//sha256transform_ov <- crucible_llvm_unsafe_assume_spec sha256_bc "SHA256Transform" sha256transform_spec;
 //crucible_llvm_verify sha256_bc "SHA256Init" [] true sha256init_spec abc;
 //crucible_llvm_verify sha256_bc "SHA256Transform" [] true sha256transform_spec (unint_yices []);
-//crucible_llvm_verify sha256_bc "SHA256Transform" [] true sha256transform_spec (quickcheck 10);
+sha256transform_ov <- crucible_llvm_verify sha256_bc "SHA256Transform" [] true sha256transform_spec (quickcheck 10);
+//crucible_llvm_verify sha256_bc "SHA256Transform" [] true sha256transform_spec abc;
 crucible_llvm_verify sha256_bc "SHA256Update" [sha256transform_ov] true sha256update_spec yices;
 //crucible_llvm_verify sha256_bc "SHA256Update" [] true sha256update_spec yices;
 
