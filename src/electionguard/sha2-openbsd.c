@@ -466,7 +466,7 @@ SHA256Update(SHA2_CTX *context, const uint8_t *data, size_t len)
 	/* Calling with no data is valid (we do nothing) */
 	if (len == 0)
 		return;
-
+#if 0
 	usedspace = (context->bitcount[0] >> 3) % SHA256_BLOCK_LENGTH;
 	if (usedspace > 0) {
 		/* Calculate how much free space is available in the buffer */
@@ -488,6 +488,7 @@ SHA256Update(SHA2_CTX *context, const uint8_t *data, size_t len)
 			return;
 		}
 	}
+#endif
 	while (len >= SHA256_BLOCK_LENGTH) {
 		/* Process as many complete blocks as we can */
 		SHA256Transform(context, data);

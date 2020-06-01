@@ -56,9 +56,24 @@ let sha256transform_spec = do {
   postcond {{ SHA256Block pre_ctx.state (map rev_endian_32 data_term) == post_ctx.state}};
 };
 
+let sha256update_spec = do {
+  ctx <- ctx_new_ptr "preupdate_hash";
+
+  data <- variable (llvm_array 512 (llvm_int 8)) "data" FRESH;
+  datap <- pointer CONST (llvm_array 512 (llvm_int 8));
+
+  len <- variable uint32_t "len" (STALE {{ 512 : [64] }});
+  
+  execute [ctx.p, data.p, len.s];
+};
+
+sha256transform_ov <- crucible_llvm_unsafe_assume_spec sha256_bc "SHA256Transform"
+                      sha256transform_spec;
 
 //crucible_llvm_verify sha256_bc "SHA256Init" [] true sha256init_spec abc;
-crucible_llvm_verify sha256_bc "SHA256Transform" [] true sha256transform_spec yices;
+//crucible_llvm_verify sha256_bc "SHA256Transform" [] true sha256transform_spec (unint_yices []);
 //crucible_llvm_verify sha256_bc "SHA256Transform" [] true sha256transform_spec (quickcheck 10);
+crucible_llvm_verify sha256_bc "SHA256Update" [sha256transform_ov] true sha256update_spec yices;
+//crucible_llvm_verify sha256_bc "SHA256Update" [] true sha256update_spec yices;
 
 
