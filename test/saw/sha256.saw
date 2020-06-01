@@ -71,5 +71,3 @@ sha256transform_ov <- crucible_llvm_verify sha256_bc "SHA256Transform" [] true s
 //crucible_llvm_verify sha256_bc "SHA256Transform" [] true sha256transform_spec abc;
 crucible_llvm_verify sha256_bc "SHA256Update" [sha256transform_ov] true sha256update_spec yices;
 //crucible_llvm_verify sha256_bc "SHA256Update" [] true sha256update_spec yices;
-
-
