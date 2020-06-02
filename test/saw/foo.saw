@@ -30,4 +30,4 @@ let foo_spec = do {
 
 foo_bc <- llvm_load_module "obj/foo.bc";
 bar_ov <- crucible_llvm_verify foo_bc "bar" [ ] true bar_spec yices;
-//crucible_llvm_verify foo_bc "foo" [bar_ov ] true foo_spec yices;
+crucible_llvm_verify foo_bc "foo" [bar_ov ] true foo_spec yices;
