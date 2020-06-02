@@ -1,4 +1,4 @@
-all:	obj/bignum.bc obj/sha256.bc 
+all:	obj/bignum.bc obj/sha256.bc obj/foo.bc
 
 obj/bignum.bc:	../../src/electionguard/bignum.c
 	clang -emit-llvm ../../src/electionguard/bignum.c -I../../include/electionguard -I/usr/local/include -I../../src/electionguard -o obj/bignum.bc -c
@@ -9,6 +9,9 @@ obj/sha256.bc:	../../src/electionguard/sha2-openbsd.c
 
 obj/test.bc:	test.c
 	clang test.c -emit-llvm  -I/usr/local/include -o obj/test.bc -c
+
+obj/foo.bc:	foo.c
+	clang foo.c -emit-llvm  -I/usr/local/include -o obj/foo.bc -c
 
 obj/ptr.bc:	ptr.c
 	clang ptr.c -emit-llvm  -I/usr/local/include -o obj/ptr.bc -c

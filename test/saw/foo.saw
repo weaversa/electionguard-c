@@ -1,0 +1,33 @@
+include "llvm.saw";
+
+let alloc_init ty v = do {
+    p <- crucible_alloc ty;
+    crucible_points_to p v;
+    return p;
+};
+
+let alloc_init_readonly ty v = do {
+    p <- crucible_alloc_readonly ty;
+    crucible_points_to p (crucible_term v);
+    return p;
+};
+
+let ptr_to_fresh n ty = do {
+    x <- crucible_fresh_var n ty;
+    p <- alloc_init ty (crucible_term x);
+    return (x, p);
+};
+
+let bar_spec = do {
+  (v, vp) <- ptr_to_fresh "v" (llvm_int 32);  
+  precond {{ v < 10 }};
+  execute [vp];
+};
+
+let foo_spec = do {
+  execute [];
+};
+
+foo_bc <- llvm_load_module "obj/foo.bc";
+bar_ov <- crucible_llvm_verify foo_bc "bar" [ ] true bar_spec yices;
+//crucible_llvm_verify foo_bc "foo" [bar_ov ] true foo_spec yices;
