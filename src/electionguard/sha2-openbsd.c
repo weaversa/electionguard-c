@@ -489,7 +489,7 @@ SHA256Update(SHA2_CTX *context, const uint8_t *data, size_t len)
 	}
 	while (len >= SHA256_BLOCK_LENGTH) {
 		/* Process as many complete blocks as we can */
-		SHA256Transform(context, data);
+	        SHA256Transform(context, data);
 		context->bitcount[0] += SHA256_BLOCK_LENGTH << 3;
 		len -= SHA256_BLOCK_LENGTH;
 		data += SHA256_BLOCK_LENGTH;
@@ -529,7 +529,6 @@ SHA256Final(uint8_t digest[], SHA2_CTX *context)
 				}
 				/* Do second-to-last transform: */
 				SHA256Transform(context, context->buffer);
-
 				/* And set-up for the last transform: */
 				bzero(context->buffer, SHA256_SHORT_BLOCK_LENGTH);
 			}
@@ -566,6 +565,14 @@ SHA256Final(uint8_t digest[], SHA2_CTX *context)
 	usedspace = 0;
 }
 
+void
+test_SHA256(SHA2_CTX *ctx, uint8_t digest[], const uint8_t *data, size_t len)
+{
+  SHA256Init(ctx);
+  //SHA256Transform(ctx, data);
+  SHA256Update(ctx, data, len);
+  SHA256Final(digest, ctx);
+}
 
 /*** SHA-512: *********************************************************/
 void

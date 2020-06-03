@@ -144,11 +144,26 @@ SHA256Init = { h = H0
              }
 
 SHA256Update1 : SHA256State -> [8] -> SHA256State
+/*
 SHA256Update1 s b =
   if s.n == 64
     then { h = SHA256Block s.h (split (join s.block))
          , block = [b] # zero
          , n = 1
+         , sz = s.sz + 8
+         }
+    else { h = s.h
+         , block = update s.block s.n b
+         , n = s.n + 1
+         , sz = s.sz + 8
+         }
+*/
+
+SHA256Update1 s b =
+  if s.n == 63
+    then { h = SHA256Block s.h (split (join (update s.block s.n b)))
+         , block = zero
+         , n = 0
          , sz = s.sz + 8
          }
     else { h = s.h
