@@ -1,0 +1,119 @@
+import "ElectionGuardConcrete_bv.cry";
+include "bignum.saw";
+
+let {{
+ // BVtoZP : {n} (fin n) => [n] -> ZP
+ // BVtoZP v =  fromInteger (toInteger v)
+ BVtoZP v = v
+
+ // BVtoZQ : {n} (fin n) => [n] -> ZQ
+ // BVtoZQ v =  fromInteger (toInteger v)
+ BVtoZQ v = v
+}};
+
+crypto_bc <- eg_bc;
+
+mul_mod_p_unsafe_ov  <-
+  crucible_llvm_unsafe_assume_spec crypto_bc "mul_mod_p" mul_mod_p_spec;
+
+// RandomSource_uniform_bignum_o(%struct.__mpz_struct*, %struct.RandomSource_s*)
+let RandomSource_uniform_bignum_o_spec = do {
+  ropp <- pointer WRITE (struct_t "__mpz_struct");
+  // this should be pointer to opaque but I don't know how
+  src <- pointer UNALLOC (llvm_type "i64");
+  execute [ropp, src];
+  res' <- mpz_t' WRITE 4096 "res'" ropp;
+  crucible_return (from_cryptol {{ (0:[32]) }});
+};
+
+RandomSource_uniform_bignum_ov  <-
+  crucible_llvm_unsafe_assume_spec crypto_bc "RandomSource_uniform_bignum_o"
+                                   RandomSource_uniform_bignum_o_spec;
+
+let joint_public_key_struct (rw : Term) (n : Int) (name : String) = do {
+  num_trustees <- variable (llvm_int 32) (str_concat name ".num_trustees") FRESH;
+  public_key <- mpz_t_setup rw n (str_concat name ".public_key");
+
+  v <- struct [num_trustees.s, (crucible_array [public_key.s])];
+
+  let (num_trustees_t, public_key_t) = (num_trustees.t, public_key.t);
+  // define a record so we can access the term like with .field
+  let vt = {{ {num_trustees=num_trustees_t,
+               public_key=public_key_t}
+           }};
+  return {p=crucible_null, s=v.s, t=vt};
+};
+
+let joint_public_key_ptr (rw : Term) (n : Int) (name : String) = do {
+  v <- joint_public_key_struct rw n name;
+  vp <- pointer rw (struct_t "joint_public_key_rep");
+  points_to vp v.s;
+  return {p=vp, s=v.s, t=v.t};
+};
+
+let encryption_rep_struct (rw : Term) (n : Int) (name : String) = do {
+  nonce_encoding <- mpz_t rw n (str_concat name ".nonce_encoding");
+  message_encoding <- mpz_t rw n (str_concat name ".message_encoding");
+
+  v <- struct [(crucible_array [nonce_encoding.s]),
+               (crucible_array [message_encoding.s])];
+
+  let (nonce_encoding_t, message_encoding_t) = (nonce_encoding.t, message_encoding.t);
+  // define a record so we can access the term like with .field
+  let vt = {{ {nonce_encoding=nonce_encoding_t,
+               message_encoding=message_encoding_t}
+           }};
+  return {p=crucible_null, s=v.s, t=vt};
+};
+
+let point_to_encryption_rep (rw : Term) (n : Int) (name : String) (vp : SetupValue) = do {
+  v <- encryption_rep_struct rw n name;
+  points_to vp v.s;
+  return {p=vp, s=v.s, t=v.t};
+};
+
+// Crypto_encrypt(%struct.encryption_rep*, %struct.__mpz_struct*, %struct.RandomSource_s*, %struct.joint_public_key_rep*, %struct.__mpz_struct*) #0 {
+let encrypt_spec = do {
+  p_global CONST;
+  generator_global CONST;
+ 
+  // for some reason, llvm-link is chaning the type - wtf?
+  // result <- pointer WRITE (struct_t "encryption_rep");
+  result <- pointer WRITE (struct_t "rsa_public_key");
+  //  result <- encryption_rep_struct WRITE 4096 "result";
+
+  out_nonce <- pointer WRITE (struct_t "__mpz_struct");
+
+  // this should be pointer to opaque but I don't know how
+  source <- pointer UNALLOC (llvm_type "i64");
+
+  key <- joint_public_key_ptr CONST 4096 "encrypt_key";
+  msg <- mpz_t CONST 4096 "msg";
+
+  execute [result, out_nonce, source, key.p, msg.p];
+
+  public_key <- mpz_t' WRITE 4096 "public_key" (element (element result 0) 0);
+  emsg <- mpz_t' WRITE 4096 "emsg" (element (element result 1) 0);
+  nonce <- mpz_t' WRITE 4096 "nonce" out_nonce;
+  let (public_key_t, emsg_t, nonce_t) = (public_key.t, emsg.t, nonce.t);
+  let (key_t, msg_t) = (key.t, msg.t);
+
+  let res = rewrite basic_ss {{ BVtoZP (from_mpz `{b=4096} public_key_t.value) }};
+  postcond {{res ==
+              (encrypt
+	        {individualPublicKey = (BVtoZP (from_mpz `{b=4096} key_t.public_key.value))}
+	        (BVtoZP (from_mpz `{b=4096} msg_t.value))
+	        (BVtoZQ (from_mpz `{b=4096} nonce_t.value))).public_key }};
+};
+
+let solver = do {
+//  print_goal;
+ (unint_z3 ["safe_product", "safe_mod", "mod_pow"]);
+};
+
+crucible_llvm_verify crypto_bc "Crypto_encrypt"
+                     [RandomSource_uniform_bignum_ov,
+ 		      mpz_powm_4096_ov, mpz_mul_r_r_4096_ov, print_base16_ov,
+		      mpz_mod_r_r_8192_4096_ov
+		     ]
+		     true encrypt_spec solver;

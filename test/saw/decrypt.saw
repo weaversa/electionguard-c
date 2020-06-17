@@ -1,0 +1,20 @@
+import "ElectionGuardConcrete_bv.cry";
+
+prove_me <- unfold_term ["decryptCorrect", "decrypt", "encrypt", "formPublicKey"] {{ decryptCorrect }};
+
+ss0 <- empty_ss;
+let powsimp = rewrite ss0 {{ \b x y -> pow (pow b x) y == pow b (mulq x y) }};
+let powinv = rewrite ss0 {{ \(x:ZP) y -> mulp (pow x y)
+       	     	     	    	         (pow x ((fromInteger expModulus) - y)) == 1}};
+let mulassoc = rewrite ss0 {{ \(x:ZP) y z -> (mulp (mulp x y) z) == (mulp x (mulp y z)) }};
+let negmul = rewrite ss0 {{ \(x:ZQ) y -> (mulq x ((fromInteger expModulus) - y))==
+                                         ((fromInteger expModulus) - (mulq y x)) }};
+
+ss1 <- addsimps' [powsimp, powinv, negmul, mulassoc] empty_ss;
+
+let solver = do {
+  print_goal;
+  yices;
+};
+
+prove_print solver (rewrite ss1 prove_me);

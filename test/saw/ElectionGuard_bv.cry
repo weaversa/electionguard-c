@@ -95,16 +95,14 @@ mod_pow a b p = (r!0).0
 
 // Raise an element of ZP to a power in ZQ.
 pow : ZP -> ZQ -> ZP
-//pow z n = z ^^ fromInteger (fromZ n)
-//pow z n = (z ^^ n) % (fromInteger prime)
-pow z n = mod_pow z n' p
-            where
-	    p = (fromInteger prime)
-	    n' = if n <$ 0 then (fromInteger expModulus) + n else n
+pow z n = mod_pow z n (fromInteger prime)
 
 // multiply mod P
-mul : ZP -> ZP -> ZP
-mul x y = mod_mul x y (fromInteger prime)
+mulp : ZP -> ZP -> ZP
+mulp x y = mod_mul x y (fromInteger prime)
+
+mulq : ZQ -> ZQ -> ZQ
+mulq x y = mod_mul x y (fromInteger expModulus)
 
 inZrp : ZP -> Bit
 inZrp x = pow x (fromInteger expModulus) == 1
@@ -276,7 +274,7 @@ type EncryptedMessage =
 encrypt : IndividualPublicKey -> ZP -> Nonce -> EncryptedMessage
 encrypt key msg r =
   { public_key = pow g r
-  , ciphertext = mul msg (pow key.individualPublicKey r)
+  , ciphertext = mulp msg (pow key.individualPublicKey r)
   }
 
 // Encrypt a selection using El Gamal encryption over modular integers.
@@ -316,16 +314,18 @@ property encryptContestCorrect s (contest : Contest 3) rs =
 
 // Perform a decryption of a message given a private key.
 // decrypt : ZQ -> EncryptedMessage -> ZP
-decrypt s emsg = mul emsg.ciphertext  (pow emsg.public_key (- s))
+//decrypt s emsg = mul emsg.ciphertext  (pow emsg.public_key (- s))
+decrypt s emsg = mulp emsg.ciphertext
+                     (pow emsg.public_key ((fromInteger expModulus) - s))
 
 property decryptCorrect s' msg' r' =
   decrypt s emsg == msg
   where
-  s = s' % (fromInteger expModulus)
-  msg = msg' % (fromInteger prime)
-  r = r' % (fromInteger expModulus)
-  pub = formPublicKey s
-  emsg = encrypt pub msg r
+   s = s' % (fromInteger expModulus)
+   msg = msg' % (fromInteger prime)
+   r = r' % (fromInteger expModulus)
+   pub = formPublicKey s
+   emsg = encrypt pub msg r
 
 // A Chaum-Pedersen proof includes an encrypted message commitment, a
 // challenge hash, and a response.
