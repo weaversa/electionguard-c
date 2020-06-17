@@ -85,7 +85,7 @@ mod_mul x y p = safe_mod (safe_product x y) p
   
 /* Definition of modular exponentiation */
 //Will fail if p == 0
-mod_pow : {a} (fin a, a >= 1) => [a] -> [a] -> [a] -> [a]
+mod_pow : {a, b} (fin a, a >= 1, fin b) => [a] -> [b] -> [a] -> [a]
 mod_pow a b p = (r!0).0
     where r = [ (1 % p, a % p) ]
             # [ (if bi then mod_mul ri ai p else ri,
