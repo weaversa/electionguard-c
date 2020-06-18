@@ -6,6 +6,8 @@ let {{
   
   to_mpz bv = groupBy`{64} (0#bv)
 
+  /* moved to ElectionGuard
+  
   /* Unsigned word extension. */
   uext : {a, b} (fin a, fin b) => [a] -> [a+b]
   uext x = zero # x
@@ -29,9 +31,10 @@ let {{
   /* Definition of modular multiplication. */
   mod_mul : {n} (fin n) => [n] -> [n] -> [n] -> [n]
   mod_mul x y p = safe_mod (safe_product x y) p
-
+  
   /* Definition of modular exponentiation */
   //Will fail if p == 0
+
   mod_pow : {a} (fin a, a >= 1) => [a] -> [a] -> [a] -> [a]
   mod_pow a b p = (r!0).0
     where r = [ (1 % p, a % p) ]
@@ -39,6 +42,8 @@ let {{
                  mod_mul ai ai p)
               | (ri, ai) <- r
               | bi <- reverse b ]
+
+*/
 
   cmp: {a, b} (fin a, fin b, b >= 1) => [a] -> [a] -> [b]
   cmp x y = if (x == y) then 0 else if (x < y) then (-1) else 1

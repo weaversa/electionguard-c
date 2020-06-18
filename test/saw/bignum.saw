@@ -79,7 +79,9 @@ let q_global (rw : Term) = do {
 };
 
 
-bignum_bc <- llvm_load_module "obj/bignum.bc";
+eg_bc <- llvm_load_module "obj/eg.bc";
+//bignum_bc <- llvm_load_module "obj/bignum.bc";
+bignum_bc <- eg_bc;
 
 let bignum_verify function_name overrides spec solver = crucible_llvm_verify bignum_bc function_name overrides true spec solver;
 
@@ -151,6 +153,10 @@ let pow_mod_p_spec = do {
 
   res' <- mpz_t' WRITE 4096 "res'" resp;
 
+  p <- mpz_t' CONST 4096 "p" (element (global "p") 0);
+  let pt = p.t;
+  postcond {{ pt.value == p_array }};
+
   let (rest', baset, expt) = (res'.t, base.t, exp.t);
   equal (from_cryptol {{ from_mpz`{b=4096} rest'.value }})
         (from_cryptol {{ mod_pow (from_mpz`{b=4096} baset.value)
@@ -160,13 +166,11 @@ let pow_mod_p_spec = do {
 
 mpz_powm_4096_ov <- mpz_powm_ov bignum_bc 4096;
 
-/*
-pow_mod_p_test_ov <- bignum_verify
+pow_mod_p_ov <- bignum_verify
   "pow_mod_p"
   [print_base16_ov, mpz_powm_4096_ov]
   pow_mod_p_spec
   (unint_z3 ["mod_pow"]);
-*/
 
 
 //void pow_mod_q(mpz_t res, const mpz_t base, const mpz_t exp)
@@ -224,6 +228,7 @@ mul_mod_p_ov <- bignum_verify
   mul_mod_p_spec
   (unint_z3 ["safe_product", "safe_mod"]);
 */
+
 //void mul_mod_p(mpz_t res, const mpz_t res, const mpz_t b)
 let mul_mod_p_r_r_spec = do {
   p_global CONST;
@@ -242,19 +247,22 @@ let mul_mod_p_r_r_spec = do {
 
 mpz_mul_r_r_4096_ov <- mpz_mul_r_r_ov bignum_bc 4096;
 
+/*
 mul_mod_p_ov <- bignum_verify
   "mul_mod_p"
   [mpz_mul_4096_ov, mpz_mod_r_r_8192_4096_ov]
   mul_mod_p_spec
   (offline_unint_smtlib2 ["safe_product", "safe_mod", "mod_pow", "cmp"] "mul_mod");
+*/
 //  (unint_z3 ["safe_product", "safe_mod"]);
 
+/*
 mul_mod_p_r_r_ov <- bignum_verify
   "mul_mod_p"
   [mpz_mul_r_r_4096_ov, mpz_mod_r_r_8192_4096_ov]
   mul_mod_p_r_r_spec
   (unint_z3 ["safe_product", "safe_mod"]);
-
+*/
 
 let ss0 = cryptol_ss ();
 
@@ -386,6 +394,7 @@ let solver = do {
    abc;
 };
 
+/*
 log_generator_mod_p_ov <- bignum_verify
   "log_generator_mod_p"
   [print_base16_ov, mpz_init_4096_ov, mpz_set_ui_4096_ov, mpz_add_ui_r_r_4096_ov, mpz_mul_r_r_4096_ov, mpz_mod_r_r_8192_4096_ov /*mul_mod_p_r_r_ov*/, mpz_cmp_4096_ov, mpz_mul_4096_ov]
@@ -396,4 +405,5 @@ log_generator_mod_p_ov <- bignum_verify
 //  yices;
 //  z3;
 //    abc;
-  solver;
+ solver;
+*/
