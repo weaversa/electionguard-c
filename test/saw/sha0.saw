@@ -1,0 +1,333 @@
+include "llvm.saw";
+import "SHA0.cry";
+
+sha256_bc <- llvm_load_module "obj/sha0.bc";
+
+let {{
+ rev_endian_32 v = join (reverse (split `{4} v))
+}};
+let ctx_struct (name : String) = do {
+  state <- variable (llvm_array 8 (llvm_int 32)) (str_concat name ".state") FRESH;
+  bitcount <- variable (llvm_array 2 (llvm_int 64)) (str_concat name ".bitcount") FRESH;
+  buffer <- variable (llvm_array 128 (llvm_int 8)) (str_concat name ".buffer") FRESH;
+  ctx <- struct [(crucible_struct [state.s]), bitcount.s, buffer.s];
+
+  let (statet, bitcount, buffert) = (state.t, bitcount.t, buffer.t);
+  // define a record so we can access the term like with .field
+  let ctxt = {{ {state=statet, bitcount=bitcount, buffer=buffert} }};
+  return {p=crucible_null, s=ctx.s, t=ctxt};
+};
+
+let ctx_new_ptr (name : String) = do {
+  ctx <- ctx_struct name;
+  ctxp <- pointer WRITE (llvm_struct "struct._SHA2_CTX") ;
+  points_to ctxp ctx.s;  
+  return {p=ctxp, s=ctx.s, t=ctx.t};
+};
+
+let ctx_assign_ptr (name: String) (ctxp : SetupValue) = do {
+  ctx <- ctx_struct name;
+  points_to ctxp ctx.s;  
+  return {p=ctxp, s=ctx.s, t=ctx.t};
+};
+
+
+let alloc_init ty v = do {
+  p <- crucible_alloc ty;
+  crucible_points_to p v;
+  return p;
+};
+
+let ptr_to_fresh n ty = do {
+ x <- crucible_fresh_var n ty;
+ p <- alloc_init ty (crucible_term x);
+ return (x, p);
+};
+ 
+let memset_spec (l : Int) = do {
+  zero <- variable (llvm_array l (llvm_int 8)) "zero"
+      (STALE {{ repeat `{l} (0:[8])}});
+//  buf <- pointer WRITE (llvm_int 8) ;
+  (buf, bufp) <- ptr_to_fresh "buf" (llvm_array l (llvm_int 8));
+  val <- variable (llvm_int 8) "memset.val" FRESH;
+  len <- variable (llvm_int 64) "memset.len" (STALE {{ `l:[64] }});
+  arg3 <- variable (llvm_int 32) "memset.arg3" (STALE {{ 8:[32] }});
+  arg4 <- variable (llvm_int 1) "memset.arg4" (STALE {{ 0:[1] }});
+  execute [bufp, val.s, len.s, arg3.s, arg4.s];
+
+  points_to bufp zero.s;
+};
+/*
+memset_64_ov <- crucible_llvm_unsafe_assume_spec sha256_bc "llvm.memset.p0i8.i64" (memset_spec 64);
+memset_56_ov <- crucible_llvm_unsafe_assume_spec sha256_bc "llvm.memset.p0i8.i64" (memset_spec 56);
+bzero_ov <- crucible_llvm_unsafe_assume_spec sha256_bc "bzero_saw" bzero_spec;
+*/
+
+let sha256init_spec = do {
+  ctx <- ctx_new_ptr "pre_init";
+
+  execute [ctx.p];
+  
+  res <- ctx_assign_ptr "post_init" ctx.p;
+  let post_ctx = res.t;
+  
+
+  postcond {{ (post_ctx.state == H0) /\
+              (post_ctx.bitcount @ 0) == zero /\
+              (post_ctx.buffer @ 0) == zero
+	   }};
+};
+
+
+let cry_ss = cryptol_ss ();
+//let cry_ss = empty_ss;
+let ss0 = add_prelude_eqs [ "bvShiftL_bvShl"
+                            , "bvShiftR_bvShr"
+                            ] cry_ss;
+mul2_rule <- rewrite ss0 {{\(x:[32])  -> 2 * x == x << 1 }};
+mul3_rule <- rewrite ss0 {{\(x:[32])  -> 3 * x == (x << 1) + x }};
+mul5_rule <- rewrite ss0 {{\(x:[32])  -> 5 * x == (x << 2) + x }};
+
+s0_pattern <- (rewrite ss0 (unfold_term ["S0"] {{ S0 }}));
+s0_rule <- rewrite ss0 {{\(x:[32]) -> s0_pattern x == S0 x }};
+
+s1_pattern <- (rewrite ss0 (unfold_term ["S1"] {{ S1 }}));
+s1_rule <- rewrite ss0 {{\(x:[32]) -> s1_pattern x == S1 x }};
+
+ch_pattern <- (rewrite ss0 (unfold_term ["Ch"] {{ Ch }}));
+ch0_rule <- rewrite ss0 {{\x y z -> ch_pattern x y z == Ch x y z }};
+ch_pattern <- (rewrite ss0 (unfold_term ["Ch_1"] {{ Ch_1 }}));
+ch1_rule <- rewrite ss0 {{\x y z -> ch_pattern x y z == Ch x y z }};
+ch_pattern <- (rewrite ss0 (unfold_term ["Ch_2"] {{ Ch_2 }}));
+ch2_rule <- rewrite ss0 {{\x y z -> ch_pattern x y z == Ch x y z }};
+
+maj_pattern <- (rewrite ss0 (unfold_term ["Maj"] {{ Maj }}));
+maj_rule <- rewrite ss0 {{\x y z -> maj_pattern x y z == Maj x y z }};
+maj_pattern <- (rewrite ss0 (unfold_term ["Maj_1"] {{ Maj_1 }}));
+maj1_rule <- rewrite ss0 {{\x y z -> maj_pattern y x z == Maj x y z }};
+maj_pattern <- (rewrite ss0 (unfold_term ["Maj_2"] {{ Maj_2 }}));
+maj2_rule <- rewrite ss0 {{\x y z -> maj_pattern y x z == Maj x y z }};
+
+t1_pattern <- (rewrite ss0 (unfold_term ["T1_f"] {{ T1_f }}));
+t1_rule <- rewrite ss0 {{\(e:[32]) f g h k w -> t1_pattern e f g h k w == T1_f e f g h k w}};
+t1_rule <- (rewrite ss0 (unfold_term ["Ch", "S1"] t1_rule));
+
+t1_rule' <- rewrite ss0 {{\(e:[32]) f g h k w x -> T1_f e f g (k + w) x h ==
+                                                   x + T1_f e f g h k w}};
+//t1_rule'' <- rewrite ss0 {{\(e:[32]) f g h k w x -> x + T1_f e f g h k w  ==
+//                                                   T1_f e f g x k w + h}};
+t1_rule'' <- rewrite ss0 {{\(e:[32]) f g h k w x y -> (x + T1_f e f g h k w) + y  ==
+                                                       T1_f e f g y k w + h + x}};
+
+let t1_spec = do {
+  e <- variable uint32_t "e" FRESH;
+  f <- variable uint32_t "f" FRESH;
+  g <- variable uint32_t "g" FRESH;
+  h <- variable uint32_t "h" FRESH;
+  k <- variable uint32_t "k" FRESH;
+  w <- variable uint32_t "w" FRESH;
+
+  execute [e.s, f.s, g.s, h.s, k.s, w.s];
+
+  let (e_t, f_t, g_t, h_t, k_t, w_t) = (e.t, f.t, g.t, h.t, k.t, w.t);
+
+  returns (from_cryptol {{ T1_f e_t f_t g_t h_t k_t w_t }});
+
+};
+
+T1_ov <- crucible_llvm_verify sha256_bc "T1_func" [] true (t1_spec) yices;
+
+let t2_spec = do {
+  a <- variable uint32_t "a" FRESH;
+  b <- variable uint32_t "b" FRESH;
+  c <- variable uint32_t "c" FRESH;
+
+  execute [a.s, b.s, c.s];
+
+  let (a_t, b_t, c_t) = (a.t, b.t, c.t);
+
+  returns (from_cryptol {{ T2_f a_t b_t c_t }});
+
+};
+
+T2_ov <- crucible_llvm_verify sha256_bc "T2_func" [] true (t2_spec) yices;
+
+//void @SHA256Transform(%struct._SHA2_CTX* %0, i8* %1)
+let sha256transform_spec = do {
+  ctx <- ctx_new_ptr "pre_hash";
+  data <- alloc CONST (llvm_array 64 (llvm_int 8)) "data" FRESH;
+
+  execute [ctx.p, data.p];
+
+  res <- ctx_assign_ptr "post_hash" ctx.p;
+
+  let (pre_ctx, post_ctx, data_term) = (ctx.t, res.t, data.t);
+
+  points_to data.p data.s;
+
+  let model = {{ SHA256Block pre_ctx.state (split`{16} (join data_term)) }};
+//  let model = {{ SHA256_0 pre_ctx.state (split`{16} (join data_term)) }};
+//  let model = {{ SHA256_8 pre_ctx.state (split`{16} (join data_term)) }};
+//  let model = unfold_term ["SHA256_8", "SHA256Round", "SHA256Block", "SHA256Compress", "T2_f"] model;
+  postcond {{ model @ 4 == post_ctx.state @ 4}};
+//  postcond {{ pre_ctx.bitcount == post_ctx.bitcount}};
+};
+
+/* for when we are transforming the buffer in ctx */
+let sha256transform_ctx_spec = do {
+  ctx <- ctx_new_ptr "pre_hash";
+  let datap = element ctx.p 2;
+
+  execute [ctx.p, datap];
+
+  res <- ctx_assign_ptr "post_hash" ctx.p;
+
+  let (pre_ctx, post_ctx) = (ctx.t, res.t);
+
+  let model = {{ SHA256Block pre_ctx.state (split`{16} (join (pre_ctx.buffer @@ [0..63]))) }};
+//  let model = unfold_term ["SHA256Block"] model;  
+//  let model = {{ SHA256_8 pre_ctx.state (split`{16} (join (pre_ctx.buffer @@ [0..63]))) }};
+//  let model = {{ SHA256_0 pre_ctx.state (split`{16} (join (pre_ctx.buffer @@ [0..63]))) }};
+  postcond {{ model == post_ctx.state }};
+  postcond {{ pre_ctx.bitcount == post_ctx.bitcount}};
+};
+
+let solver = do {
+/*
+  simplify (addsimps' [s1_rule, s0_rule,
+                       ch0_rule, ch1_rule, ch2_rule, // ch3_rule,ch4_rule,ch5_rule,
+                       maj_rule, maj1_rule, maj2_rule,
+		       mul2_rule, mul3_rule, mul5_rule
+		       ] ss0);
+  simplify basic_ss;
+*/
+//  simplify (addsimps' [t1_rule, t1_rule', t1_rule''] empty_ss);
+//  print_goal;
+//  assume_unsat;
+//  yices;
+//    (unint_yices ["S0", "S1", "Ch", "Maj"]);
+//    (unint_z3 ["S0", "S1", "Ch", "Maj"]);
+//  (quickcheck 10);
+//    (unint_cvc4 ["S0", "S1", "Ch", "Maj", "T1_f"]);
+    (unint_cvc4 ["T1_f"]);
+//   (unint_z3 ["T1_f", "T2_f"]);
+//  z3;
+//  boolector;
+//  cvc4;
+//  mathsat;
+};
+
+sha256trasform_proof <- crucible_llvm_verify sha256_bc "SHA256Transform" [T1_ov, T2_ov] true (sha256transform_spec)
+//  w4;
+//  abc;
+//  z3;
+//   yices;
+// (quickcheck 10);
+  solver;
+/*
+let sha256update_spec = do {
+  ctx <- ctx_new_ptr "preupdate_hash";
+
+  let ctxt = ctx.t;
+
+  precond {{ ctxt.bitcount @ 0 == zero }};
+
+  data <- alloc CONST (llvm_array 64 (llvm_int 8)) "data" FRESH;
+
+  len <- variable uint64_t "len" (STALE {{ 64 : [64] }});
+  
+  execute [ctx.p, data.p, len.s];
+
+  res <- ctx_assign_ptr "postupdate_hash" ctx.p;
+
+  let (pre_ctx, post_ctx, data_term) = (ctx.t, res.t, data.t);
+
+  postcond {{ (SHA256Update pre_state data_term).h == post_ctx.state
+              where pre_state = {h=pre_ctx.state,
+	                         block=pre_ctx.buffer @@ [0..63],
+				 n=0,
+				 sz=zero}
+	   }};
+};
+
+let test_sha256_spec (n : Int) = do {
+  ctx <- ctx_new_ptr "context";
+  // digest <- alloc WRITE (llvm_array 32 (llvm_int 8)) "pre_digest" FRESH;
+  // when compiled for litte-endian
+  digest <- alloc WRITE (llvm_array 8 (llvm_int 32)) "pre_digest" FRESH;
+  data <- alloc CONST (llvm_array n (llvm_int 8)) "data" FRESH;
+  len <- variable uint64_t "len" (STALE {{ `n : [64] }});
+
+  execute [ctx.p, digest.p, data.p, len.s];
+
+  // just test update
+  /*
+  res <- ctx_assign_ptr "postupdate_hash" ctx.p;
+
+  let (pre_ctx, post_ctx, data_term) = (ctx.t, res.t, data.t);
+
+  postcond {{ post_ctx.state == (SHA256Update SHA256Init data_term).h }};
+  */
+
+  /* check the hash before it is converted to host order */	
+  res <- ctx_assign_ptr "postupdate_hash" ctx.p;
+
+  let (pre_ctx, post_ctx, data_term) = (ctx.t, res.t, data.t);
+  postcond {{ join (map rev_endian_32 post_ctx.state) ==
+              (SHA256Final (SHA256Update SHA256Init data_term)) }};
+
+  // test the full thing
+  /*
+  computed_digest <- variable (llvm_array 32 (llvm_int 8)) "post_digest" FRESH;
+  points_to digest.p computed_digest.s;
+
+  let (computed_digest_t, data_t) = (computed_digest.t, data.t);
+  postcond {{ join computed_digest_t == (SHA256Final (SHA256Update SHA256Init data_t)) }};
+  */
+
+};
+
+//sha256trasform_proof <- crucible_llvm_verify sha256_bc "SHA256Transform" [] true (sha256transform_spec) abc;
+
+sha256transform_ov <- crucible_llvm_unsafe_assume_spec sha256_bc "SHA256Transform" sha256transform_spec;
+sha256transform_ctx_ov <- crucible_llvm_unsafe_assume_spec sha256_bc "SHA256Transform" sha256transform_ctx_spec;
+
+/*
+init_ov <- crucible_llvm_verify sha256_bc "SHA256Init" [] true sha256init_spec abc;
+
+update_ov <- crucible_llvm_verify sha256_bc "SHA256Update" [sha256transform_ov] true sha256update_spec yices;
+
+update_ov <- crucible_llvm_verify sha256_bc "SHA256Update" [sha256transform_ov] true sha256update_spec (unint_yices ["SHA256Block"]);
+*/
+
+let solver = do {
+  (offline_unint_smtlib2 ["SHA256Block"] "xxx");
+//  print_goal;
+//  assume_unsat;
+};
+
+/*
+// curious, only yices seems to be able to prove this. Takes around 4 minutes
+crucible_llvm_verify sha256_bc "test_SHA256"
+//                     [sha256transform_ov, sha256transform_ctx_ov, memset_64_ov, memset_56_ov]
+                     [sha256transform_ov, sha256transform_ctx_ov]
+		     true (test_sha256_spec 837)
+//		     (unint_yices ["SHA256Block"]);
+//		     (offline_unint_smtlib2 ["SHA256Block"] "xxx");
+//		     solver;
+		     yices;
+*/
+
+crucible_llvm_verify sha256_bc "test_SHA256"
+                     [sha256transform_ov, sha256transform_ctx_ov]
+		     true (test_sha256_spec 2048)
+		     yices;
+
+/*
+crucible_llvm_verify sha256_bc "test_SHA256"
+                     [sha256transform_ov, sha256transform_ctx_ov]
+		     true (test_sha256_spec 20)
+//		     abc;
+		     solver;
+*/
+*/
