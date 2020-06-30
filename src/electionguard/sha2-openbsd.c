@@ -566,7 +566,7 @@ SHA256Final(uint8_t digest[], SHA2_CTX *context)
 			/* Convert TO host byte order */
 			int	j;
 			for (j = 0; j < 8; j++) {
-				REVERSE32(context->state.st32[j],
+			        REVERSE32(context->state.st32[j],
 				    context->state.st32[j]);
 				*d++ = context->state.st32[j];
 			}
@@ -587,7 +587,6 @@ void
 test_SHA256(SHA2_CTX *ctx, uint8_t digest[], const uint8_t *data, size_t len)
 {
   SHA256Init(ctx);
-  //SHA256Transform(ctx, data);
   SHA256Update(ctx, data, len);
   SHA256Final(digest, ctx);
 }

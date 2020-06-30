@@ -80,14 +80,10 @@ SHA256MessageSchedule M = W where
     W = M # [ s1 (W@(j-2)) + (W@(j-7)) + s0 (W@(j-15)) + (W@(j-16)) | j <- [16 .. 63]:[_][8] ]
 
 
-T1_f:  [32] -> [32] -> [32] -> [32] -> [32] -> [32] -> [32]
-T1_f e f g h k w = h + S1 e + Ch e f g  + k + w
-
 SHA256Compress : [8][32] -> [64][32] -> [8][32]
 SHA256Compress H W = [as!0 + H@0, bs!0 + H@1, cs!0 + H@2, ds!0 + H@3, es!0 + H@4, fs!0 + H@5, gs!0 + H@6, hs!0 + H@7] where
 
-    // T1 = [h + S1 e + Ch e f g  + k + w | h <- hs | e <- es | f <- fs | g <- gs | k <- K | w <- W]
-    T1 = [T1_f e f g h k w | h <- hs | e <- es | f <- fs | g <- gs | k <- K | w <- W]
+    T1 = [h + S1 e + Ch e f g  + k + w | h <- hs | e <- es | f <- fs | g <- gs | k <- K | w <- W]
     T2 = [S0 a  + Maj a b c  | a <- as | b <- bs | c <- cs]
 
     hs = take `{65} ([H@7] # gs)

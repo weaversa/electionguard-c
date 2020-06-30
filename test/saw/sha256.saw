@@ -48,6 +48,12 @@ let sha256init_spec = do {
 	   }};
 };
 
+// define the T1 mixing function so we can use it as an uninterpreted function
+let {{
+  T1_f:  [32] -> [32] -> [32] -> [32] -> [32] -> [32] -> [32]
+  T1_f e f g h k w = h + S1 e + Ch e f g  + k + w
+}};
+
 let t1_spec = do {
   e <- variable uint32_t "e" FRESH;
   f <- variable uint32_t "f" FRESH;
@@ -65,6 +71,21 @@ let t1_spec = do {
 };
 
 T1_ov <- crucible_llvm_verify sha256_bc "T1_func" [] true (t1_spec) yices;
+
+let ss0 = cryptol_ss ();
+
+// rewrite SHA256Compress to use our T1_f function 
+let tsub = {{
+  \(e:[32]) f g h k w -> h + S1 e + Ch e f g  + k + w == T1_f e f g h k w
+}};
+
+t1_rewrite <- prove_print z3 (rewrite ss0 tsub);
+
+let solver = do {
+   unfolding ["SHA256Block", "SHA256Compress"];
+   simplify (addsimp t1_rewrite ss0);
+   unint_cvc4 ["T1_f"];
+};
 
 //void @SHA256Transform(%struct._SHA2_CTX* %0, i8* %1)
 let sha256transform_spec = do {
@@ -127,55 +148,64 @@ let sha256update_spec = do {
 
 let test_sha256_spec (n : Int) = do {
   ctx <- ctx_new_ptr "context";
-  // digest <- alloc WRITE (llvm_array 32 (llvm_int 8)) "pre_digest" FRESH;
+  //  digest <- alloc WRITE (llvm_array 32 (llvm_int 8)) "pre_digest" FRESH;
+  //  digest <- pointer WRITE(llvm_array 32 (llvm_int 8));
+  digest <- variable (llvm_array 8 (llvm_int 32)) "pre_digest" FRESH;
+  digestp <- pointer WRITE (llvm_array 8 (llvm_int 32));
+  points_to digestp digest.s;
+  
   // when compiled for litte-endian
-  digest <- alloc WRITE (llvm_array 8 (llvm_int 32)) "pre_digest" FRESH;
+  //digest <- alloc WRITE (llvm_array 8 (llvm_int 32)) "pre_digest" FRESH;
   data <- alloc CONST (llvm_array n (llvm_int 8)) "data" FRESH;
   len <- variable uint64_t "len" (STALE {{ `n : [64] }});
 
-  execute [ctx.p, digest.p, data.p, len.s];
+  execute [ctx.p, digestp, data.p, len.s];
 
   // just test update
   /*
   res <- ctx_assign_ptr "postupdate_hash" ctx.p;
-
   let (pre_ctx, post_ctx, data_term) = (ctx.t, res.t, data.t);
-
   postcond {{ post_ctx.state == (SHA256Update SHA256Init data_term).h }};
   */
 
-  /* check the hash before it is converted to host order */	
+  // check the hash before it is converted to host order
+  /*
   res <- ctx_assign_ptr "postupdate_hash" ctx.p;
-
   let (pre_ctx, post_ctx, data_term) = (ctx.t, res.t, data.t);
   postcond {{ join (map rev_endian_32 post_ctx.state) ==
               (SHA256Final (SHA256Update SHA256Init data_term)) }};
-
-  // test the full thing
-  /*
-  computed_digest <- variable (llvm_array 32 (llvm_int 8)) "post_digest" FRESH;
-  points_to digest.p computed_digest.s;
-
-  let (computed_digest_t, data_t) = (computed_digest.t, data.t);
-  postcond {{ join computed_digest_t == (SHA256Final (SHA256Update SHA256Init data_t)) }};
   */
 
+  // test the full thing
+  computed_digest <- variable (llvm_array 8 (llvm_int 32)) "post_digest" FRESH;
+  points_to digestp computed_digest.s;
+
+  let (computed_digest_t, data_t) = (computed_digest.t, data.t);
+  // we need to reverse the words since SAW converts them to BE when reading 
+  postcond {{ join (map rev_endian_32 computed_digest_t) ==
+              (SHA256Final (SHA256Update SHA256Init data_t)) }};
 };
 
-sha256transform_ov <- crucible_llvm_verify sha256_bc "SHA256Transform"
-                      [T1_ov] true (sha256transform_spec) (unint_cvc4 ["T1_f"]);
-sha256transform_ctx_ov <- crucible_llvm_verify sha256_bc "SHA256Transform"
-                          [T1_ov] true (sha256transform_ctx_spec) (unint_cvc4 ["T1_f"]);
 
 /*
+sha256transform_ov <- crucible_llvm_verify sha256_bc "SHA256Transform"
+                      [T1_ov] true (sha256transform_spec)
+		      solver;
+sha256transform_ctx_ov <- crucible_llvm_verify sha256_bc "SHA256Transform"
+                          [T1_ov] true (sha256transform_ctx_spec)
+			  solver;
+*/
+
 sha256transform_ov <- crucible_llvm_unsafe_assume_spec sha256_bc
                       "SHA256Transform" sha256transform_spec;
 sha256transform_ctx_ov <- crucible_llvm_unsafe_assume_spec sha256_bc
                           "SHA256Transform" sha256transform_ctx_spec;
-*/
+
 
 crucible_llvm_verify sha256_bc "test_SHA256"
                      [sha256transform_ov, sha256transform_ctx_ov]
-     		     true (test_sha256_spec 65)
+     		     true (test_sha256_spec 127)
+//		     (unint_yices []);
 		     (unint_yices ["SHA256Block"]);
+//		     (quickcheck 10);
 
