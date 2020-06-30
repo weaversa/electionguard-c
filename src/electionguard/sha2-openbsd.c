@@ -378,6 +378,13 @@ SHA256Transform(SHA2_CTX *context, const uint8_t *data)
 
 #else /* SHA2_UNROLL_TRANSFORM */
 
+#ifdef SAW
+uint32_t T1_func(uint32_t e, uint32_t f, uint32_t g, uint32_t h, uint32_t k, uint32_t w)
+{
+  return h + Sigma1_256(e) + Ch(e, f, g) + k + w;
+}
+#endif
+
 void
 SHA256Transform(SHA2_CTX *context, const uint8_t *data)
 {
@@ -405,7 +412,11 @@ SHA256Transform(SHA2_CTX *context, const uint8_t *data)
 		    ((uint32_t)data[1] << 16) | ((uint32_t)data[0] << 24);
 		data += 4;
 		/* Apply the SHA-256 compression function to update a..h */
+#ifdef SAW
+		T1 = T1_func(e, f, g, h, K256[j], W256[j]);
+#else
 		T1 = h + Sigma1_256(e) + Ch(e, f, g) + K256[j] + W256[j];
+#endif
 		T2 = Sigma0_256(a) + Maj(a, b, c);
 		h = g;
 		g = f;
@@ -427,8 +438,13 @@ SHA256Transform(SHA2_CTX *context, const uint8_t *data)
 		s1 = sigma1_256(s1);
 
 		/* Apply the SHA-256 compression function to update a..h */
+#ifdef SAW
+		T1 = T1_func(e, f, g, h, K256[j],
+			     (W256[j&0x0f] += s1 + W256[(j+9)&0x0f] + s0));
+#else
 		T1 = h + Sigma1_256(e) + Ch(e, f, g) + K256[j] +
 		     (W256[j&0x0f] += s1 + W256[(j+9)&0x0f] + s0);
+#endif
 		T2 = Sigma0_256(a) + Maj(a, b, c);
 		h = g;
 		g = f;
@@ -561,7 +577,9 @@ SHA256Final(uint8_t digest[], SHA2_CTX *context)
 	}
 
 	/* Clean up state data: */
+#ifndef SAW
 	explicit_bzero(context, sizeof(*context));
+#endif
 	usedspace = 0;
 }
 

@@ -32,6 +32,7 @@ let ctx_assign_ptr (name: String) (ctxp : SetupValue) = do {
 };
 
 
+
 let sha256init_spec = do {
   ctx <- ctx_new_ptr "pre_init";
 
@@ -39,7 +40,7 @@ let sha256init_spec = do {
   
   res <- ctx_assign_ptr "post_init" ctx.p;
   let post_ctx = res.t;
-
+  
 
   postcond {{ (post_ctx.state == H0) /\
               (post_ctx.bitcount @ 0) == zero /\
@@ -47,6 +48,23 @@ let sha256init_spec = do {
 	   }};
 };
 
+let t1_spec = do {
+  e <- variable uint32_t "e" FRESH;
+  f <- variable uint32_t "f" FRESH;
+  g <- variable uint32_t "g" FRESH;
+  h <- variable uint32_t "h" FRESH;
+  k <- variable uint32_t "k" FRESH;
+  w <- variable uint32_t "w" FRESH;
+
+  execute [e.s, f.s, g.s, h.s, k.s, w.s];
+
+  let (e_t, f_t, g_t, h_t, k_t, w_t) = (e.t, f.t, g.t, h.t, k.t, w.t);
+
+  returns (from_cryptol {{ T1_f e_t f_t g_t h_t k_t w_t }});
+
+};
+
+T1_ov <- crucible_llvm_verify sha256_bc "T1_func" [] true (t1_spec) yices;
 
 //void @SHA256Transform(%struct._SHA2_CTX* %0, i8* %1)
 let sha256transform_spec = do {
@@ -63,7 +81,6 @@ let sha256transform_spec = do {
 
   postcond {{ SHA256Block pre_ctx.state (split`{16} (join data_term)) == post_ctx.state}};
   postcond {{ pre_ctx.bitcount == post_ctx.bitcount}};
-//  postcond {{ pre_ctx.buffer == post_ctx.buffer}};
 };
 
 /* for when we are transforming the buffer in ctx */
@@ -77,12 +94,10 @@ let sha256transform_ctx_spec = do {
 
   let (pre_ctx, post_ctx) = (ctx.t, res.t);
 
-//  points_to datap (from_cryptol {{ post_ctx.buffer }});
-
   postcond {{ SHA256Block pre_ctx.state (split`{16} (join (pre_ctx.buffer @@ [0..63]))) == post_ctx.state}};
   postcond {{ pre_ctx.bitcount == post_ctx.bitcount}};
-  postcond {{ pre_ctx.buffer == post_ctx.buffer}};
 };
+
 
 let sha256update_spec = do {
   ctx <- ctx_new_ptr "preupdate_hash";
@@ -135,35 +150,59 @@ let test_sha256_spec (n : Int) = do {
   postcond {{ join (map rev_endian_32 post_ctx.state) ==
               (SHA256Final (SHA256Update SHA256Init data_term)) }};
 
-/*
   // test the full thing
+  /*
   computed_digest <- variable (llvm_array 32 (llvm_int 8)) "post_digest" FRESH;
   points_to digest.p computed_digest.s;
 
   let (computed_digest_t, data_t) = (computed_digest.t, data.t);
-  postcond {{ join post_ctx.state == (SHA256Final (SHA256Update SHA256Init data_t)) }};
-*/
+  postcond {{ join computed_digest_t == (SHA256Final (SHA256Update SHA256Init data_t)) }};
+  */
+
 };
 
-//sha256trasform_proof <- crucible_llvm_verify sha256_bc "SHA256Transform" [] true (sha256transform_spec) abc;
+sha256transform_ov <- crucible_llvm_verify sha256_bc "SHA256Transform" [T1_ov] true (sha256transform_spec) (unint_cvc4 ["T1_f"]);
 
-sha256transform_ov <- crucible_llvm_unsafe_assume_spec sha256_bc "SHA256Transform" sha256transform_spec;
+//sha256transform_ov <- crucible_llvm_unsafe_assume_spec sha256_bc "SHA256Transform" sha256transform_spec;
 sha256transform_ctx_ov <- crucible_llvm_unsafe_assume_spec sha256_bc "SHA256Transform" sha256transform_ctx_spec;
 
+/*
 init_ov <- crucible_llvm_verify sha256_bc "SHA256Init" [] true sha256init_spec abc;
 
 update_ov <- crucible_llvm_verify sha256_bc "SHA256Update" [sha256transform_ov] true sha256update_spec yices;
 
+update_ov <- crucible_llvm_verify sha256_bc "SHA256Update" [sha256transform_ov] true sha256update_spec (unint_yices ["SHA256Block"]);
+*/
+
+let solver = do {
+  (offline_unint_smtlib2 ["SHA256Block"] "xxx");
+//  print_goal;
+//  assume_unsat;
+};
+
+/*
 // curious, only yices seems to be able to prove this. Takes around 4 minutes
 crucible_llvm_verify sha256_bc "test_SHA256"
+//                     [sha256transform_ov, sha256transform_ctx_ov, memset_64_ov, memset_56_ov]
                      [sha256transform_ov, sha256transform_ctx_ov]
-		     true (test_sha256_spec 129)
+		     true (test_sha256_spec 837)
+//		     (unint_yices ["SHA256Block"]);
+//		     (offline_unint_smtlib2 ["SHA256Block"] "xxx");
+//		     solver;
 		     yices;
+*/
 
+crucible_llvm_verify sha256_bc "test_SHA256"
+                     [sha256transform_ov, sha256transform_ctx_ov]
+     		     true (test_sha256_spec 65)
+		     (unint_yices ["SHA256Block"]);
+//		     yices;
+//		     (quickcheck 10);
 
 /*
 crucible_llvm_verify sha256_bc "test_SHA256"
                      [sha256transform_ov, sha256transform_ctx_ov]
 		     true (test_sha256_spec 20)
-		     abc;
+//		     abc;
+		     solver;
 */
