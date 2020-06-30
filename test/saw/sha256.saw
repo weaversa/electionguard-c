@@ -94,7 +94,10 @@ let sha256transform_ctx_spec = do {
 
   let (pre_ctx, post_ctx) = (ctx.t, res.t);
 
-  postcond {{ SHA256Block pre_ctx.state (split`{16} (join (pre_ctx.buffer @@ [0..63]))) == post_ctx.state}};
+  postcond {{
+    SHA256Block pre_ctx.state (split`{16} (join (pre_ctx.buffer @@ [0..63]))) ==
+    post_ctx.state
+  }};
   postcond {{ pre_ctx.bitcount == post_ctx.bitcount}};
 };
 
@@ -107,13 +110,11 @@ let sha256update_spec = do {
   precond {{ ctxt.bitcount @ 0 == zero }};
 
   data <- alloc CONST (llvm_array 64 (llvm_int 8)) "data" FRESH;
-
   len <- variable uint64_t "len" (STALE {{ 64 : [64] }});
   
   execute [ctx.p, data.p, len.s];
 
   res <- ctx_assign_ptr "postupdate_hash" ctx.p;
-
   let (pre_ctx, post_ctx, data_term) = (ctx.t, res.t, data.t);
 
   postcond {{ (SHA256Update pre_state data_term).h == post_ctx.state
@@ -161,48 +162,20 @@ let test_sha256_spec (n : Int) = do {
 
 };
 
-sha256transform_ov <- crucible_llvm_verify sha256_bc "SHA256Transform" [T1_ov] true (sha256transform_spec) (unint_cvc4 ["T1_f"]);
-
-//sha256transform_ov <- crucible_llvm_unsafe_assume_spec sha256_bc "SHA256Transform" sha256transform_spec;
-sha256transform_ctx_ov <- crucible_llvm_unsafe_assume_spec sha256_bc "SHA256Transform" sha256transform_ctx_spec;
-
-/*
-init_ov <- crucible_llvm_verify sha256_bc "SHA256Init" [] true sha256init_spec abc;
-
-update_ov <- crucible_llvm_verify sha256_bc "SHA256Update" [sha256transform_ov] true sha256update_spec yices;
-
-update_ov <- crucible_llvm_verify sha256_bc "SHA256Update" [sha256transform_ov] true sha256update_spec (unint_yices ["SHA256Block"]);
-*/
-
-let solver = do {
-  (offline_unint_smtlib2 ["SHA256Block"] "xxx");
-//  print_goal;
-//  assume_unsat;
-};
+sha256transform_ov <- crucible_llvm_verify sha256_bc "SHA256Transform"
+                      [T1_ov] true (sha256transform_spec) (unint_cvc4 ["T1_f"]);
+sha256transform_ctx_ov <- crucible_llvm_verify sha256_bc "SHA256Transform"
+                          [T1_ov] true (sha256transform_ctx_spec) (unint_cvc4 ["T1_f"]);
 
 /*
-// curious, only yices seems to be able to prove this. Takes around 4 minutes
-crucible_llvm_verify sha256_bc "test_SHA256"
-//                     [sha256transform_ov, sha256transform_ctx_ov, memset_64_ov, memset_56_ov]
-                     [sha256transform_ov, sha256transform_ctx_ov]
-		     true (test_sha256_spec 837)
-//		     (unint_yices ["SHA256Block"]);
-//		     (offline_unint_smtlib2 ["SHA256Block"] "xxx");
-//		     solver;
-		     yices;
+sha256transform_ov <- crucible_llvm_unsafe_assume_spec sha256_bc
+                      "SHA256Transform" sha256transform_spec;
+sha256transform_ctx_ov <- crucible_llvm_unsafe_assume_spec sha256_bc
+                          "SHA256Transform" sha256transform_ctx_spec;
 */
 
 crucible_llvm_verify sha256_bc "test_SHA256"
                      [sha256transform_ov, sha256transform_ctx_ov]
      		     true (test_sha256_spec 65)
 		     (unint_yices ["SHA256Block"]);
-//		     yices;
-//		     (quickcheck 10);
 
-/*
-crucible_llvm_verify sha256_bc "test_SHA256"
-                     [sha256transform_ov, sha256transform_ctx_ov]
-		     true (test_sha256_spec 20)
-//		     abc;
-		     solver;
-*/
