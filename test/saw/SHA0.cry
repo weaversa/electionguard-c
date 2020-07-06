@@ -182,11 +182,9 @@ SHA256Compress H W =
 
 /*
     T1 = [h + S1 e + Ch e f g  + k + w | h <- hs | e <- es | f <- fs | g <- gs | k <- K | w <- W]
-    T2 = [S0 a  + Maj a b c  | a <- as | b <- bs | c <- cs]
 */
     T1 = [T1_f e f g h k w | h <- hs | e <- es | f <- fs | g <- gs | k <- K | w <- W]
-    T2 = [T2_f a b c  | a <- as | b <- bs | c <- cs]
-
+    T2 = [S0 a  + Maj a b c  | a <- as | b <- bs | c <- cs]
 /*
     hs = take `{33} ([H@7] # gs)
     gs = take `{33} ([H@6] # fs)
